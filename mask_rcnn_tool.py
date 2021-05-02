@@ -78,24 +78,17 @@ class MyConfig(Config):
     NUM_CLASSES = 1 + 7  # Background + my
 
     # Number of training steps per epoch
-    STEPS_PER_EPOCH = 100
+    STEPS_PER_EPOCH = 1000
 
     # Skip detections with < 90% confidence
     DETECTION_MIN_CONFIDENCE = 0.9
 
-    IMAGE_RESIZE_MODE = "square"
-    IMAGE_MIN_DIM = 800  
-    IMAGE_MAX_DIM = 1024
+    IMAGE_RESIZE_MODE = "pad64"
+    IMAGE_MIN_DIM = 640  
+    IMAGE_MAX_DIM = 1280
     IMAGE_MIN_SCALE = 0
 
-    # BACKBONE = "resnet50"
-    # BACKBONE_STRIDES = [4, 8, 16, 32, 64]
-   # # BACKBONE_STRIDES = [2, 4, 8, 16, 32]
-    # RPN_ANCHOR_SCALES = (10, 32, 64, 128, 256)
-    # RPN_ANCHOR_STRIDE = 2
-    # RPN_NMS_THRESHOLD = 0.9
-    # RPN_TRAIN_ANCHORS_PER_IMAGE = 512
-    # TRAIN_ROIS_PER_IMAGE = 512
+    BACKBONE = "resnet50"
 
 ############################################################
 #  Dataset
@@ -256,7 +249,7 @@ def train(model):
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
                 epochs=600,
-                layers='heads')
+                layers='all')
 
 
 def display_differences(image,
@@ -332,9 +325,11 @@ def recall(model, class_names):
             gt_total_dict[gt_class_id[i]] = gt_total_dict[gt_class_id[i]] + 1
 
         start_time = time.time()
-        results = model.detect_molded(np.expand_dims(image, 0), np.expand_dims(image_meta, 0), verbose=1)
+        molded_image = modellib.mold_image(image, config)
+        results = model.detect_molded(np.expand_dims(molded_image, 0), np.expand_dims(image_meta, 0), verbose=1)
         end_time = time.time()
         print("Time: %s" % str(end_time - start_time))
+        print(results)
         r = results[0]
         pre_class_ids = r['class_ids']
         for i in range(0, len(pre_class_ids)):
@@ -749,56 +744,57 @@ if __name__ == '__main__':
     if args.command == "train":
         class InferenceConfig(MyConfig):
             # NUM_CLASSES = len(class_names)
+            IMAGES_PER_GPU = 1
             NUM_CLASSES = 8
             BACKBONE = "resnet50"
-            BACKBONE_STRIDES = [2,4,8,16,32]
-            """
-            IMAGES_PER_GPU = 1
-            BACKBONE = "resnet50"
-            RPN_TRAIN_ANCHORS_PER_IMAGE = 32
-            BACKBONE_STRIDES = [4, 8, 16, 32, 64]
-            RPN_ANCHOR_SCALES = (32, 64, 128, 256, 512)
-            RPN_ANCHOR_STRIDE = 4
-            FPN_CLASSIF_FC_LAYERS_SIZE = 1024
-            TRAIN_ROIS_PER_IMAGE = 60
-            MAX_GT_INSTANCES = 30
-            RPN_NMS_THRESHOLD = 0.5
-            POST_NMS_ROIS_TRAINING = 200
-            POST_NMS_ROIS_INFERENCE = 100
-            USE_MINI_MASK = True
-            
-            BACKBONE = "resnet50"
-            IMAGES_PER_GPU = 1
+            RPN_ANCHOR_SCALES = (50,100,200,300,0)
+            RPN_ANCHOR_RATIOS = [0.25,1,1.5]
+            RPN_ANCHOR_STRIDE = 2
+            IMAGE_RESIZE_MODE = "square"
+            IMAGE_MIN_DIM = 640
+            IMAGE_MAX_DIM = 1280
+            IMAGE_MIN_SCALE = 0
+            LEARNING_RATE = 0.001
+
+            STEPS_PER_EPOCH = 1000
             RPN_TRAIN_ANCHORS_PER_IMAGE=32
-            """
+            POST_NMS_ROIS_TRAINING = 300
+            POST_NMS_ROIS_INFERENCE = 30
+            RPN_NMS_THRESHOLD = 0.5
+            USE_MINI_MASK=False
+            TRAIN_ROIS_PER_IMAGE = 30
+            MAX_GT_INSTANCES = 30
+
+            FPN_CLASSIF_FC_LAYERS_SIZE = 8
         config = InferenceConfig()
     else:
         class InferenceConfig(MyConfig):
             # Set batch size to 1 since we'll be running inference on
             # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
             
-            NUM_CLASSES = 8
             IMAGES_PER_GPU = 1
+            NUM_CLASSES = 8
+            BACKBONE = "resnet50"
+            RPN_ANCHOR_SCALES = (50,100,200,300,0)
+            RPN_ANCHOR_RATIOS = [0.25,1,1.5]
+            RPN_ANCHOR_STRIDE = 2
+            IMAGE_RESIZE_MODE = "pad64"
+            IMAGE_MIN_DIM = 640
+            IMAGE_MAX_DIM = 1280
+            IMAGE_MIN_SCALE = 0
+            LEARNING_RATE = 0.001
 
-            BACKBONE = "resnet101"
-            BACKBONE_STRIDES = [4,8,16,32,64]
-            RPN_ANCHOR_SCALES = (32,64,128,256,512)
-            RPN_ANCHOR_RATIOS = [0.5,1,2]
-            RPN_ANCHOR_STRIDE = 1
-            
-            
-            #DETECTION_MIN_CONFIDENCE = 0.1
-            """
-            RPN_TRAIN_ANCHORS_PER_IMAGE = 32
-            FPN_CLASSIF_FC_LAYERS_SIZE = 1024
-            TRAIN_ROIS_PER_IMAGE = 60
-            MAX_GT_INSTANCES = 30
+            RPN_TRAIN_ANCHORS_PER_IMAGE=32
+            POST_NMS_ROIS_TRAINING = 300
+            POST_NMS_ROIS_INFERENCE = 30
             RPN_NMS_THRESHOLD = 0.5
-            POST_NMS_ROIS_TRAINING = 200
-            POST_NMS_ROIS_INFERENCE = 100
-            USE_MINI_MASK = True
-            DETECTION_NMS_THRESHOLD = 0.7
-            """
+            USE_MINI_MASK=False
+            TRAIN_ROIS_PER_IMAGE = 30
+            MAX_GT_INSTANCES = 30
+
+            FPN_CLASSIF_FC_LAYERS_SIZE = 8
+            
+            
         config = InferenceConfig()
     config.display()
 
@@ -822,6 +818,8 @@ if __name__ == '__main__':
     elif args.weights.lower() == "imagenet":
         # Start from ImageNet trained weights
         weights_path = model.get_imagenet_weights()
+    elif args.weights.lower() == "mymask":
+        weights_path = ""
     else:
         weights_path = args.weights
 
@@ -833,6 +831,8 @@ if __name__ == '__main__':
         model.load_weights(weights_path, by_name=True, exclude=[
             "mrcnn_class_logits", "mrcnn_bbox_fc",
             "mrcnn_bbox", "mrcnn_mask"])
+    elif args.weights.lower() == "mymask":
+        pass
     else:
         model.load_weights(weights_path, by_name=True)
 
