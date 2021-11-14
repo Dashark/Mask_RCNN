@@ -153,33 +153,28 @@ class MyDataset(utils.Dataset):
             # print(a['filename'])
             if type(a['regions']) is dict:
                 polygons = [r['shape_attributes'] for r in a['regions'].values()]
+                class_ids = [class_dict[r['region_attributes']['type']] for r in a['regions'].values()]
             else:
-                if a['regions']:
-                    class_ids = []
-                    polygons = []
-                    for r in a['regions']:
-                        polygons.append(r['shape_attributes'])
-                        class_type = r['region_attributes']['type']
-                        class_ids.append(class_dict[class_type])
-                        
-                    self.print_size(polygons)
-                    # print(class_ids)
+                polygons = [r['shape_attributes'] for r in a['regions']]
+                class_ids = [class_dict[r['region_attributes']['type']] for r in a['regions']]
+            self.print_size(polygons)
+            # print(class_ids)
                         
 
             # load_mask() needs the image size to convert polygons to masks.
             # Unfortunately, VIA doesn't include it in JSON, so we must read
             # the image. This is only managable since the dataset is tiny.
-                    image_path = os.path.join(dataset_dir, a['filename'])
-                    image = skimage.io.imread(image_path)
-                    height, width = image.shape[:2]
+            image_path = os.path.join(dataset_dir, a['filename'])
+            image = skimage.io.imread(image_path)
+            height, width = image.shape[:2]
 
-                    self.add_image(
-                        "my",
-                        image_id=a['filename'],  # use file name as a unique image id
-                        path=image_path,
-                        width=width, height=height,
-                        polygons=polygons,
-                        class_ids=class_ids)
+            self.add_image(
+                "my",
+                image_id=a['filename'],  # use file name as a unique image id
+                path=image_path,
+                width=width, height=height,
+                polygons=polygons,
+                class_ids=class_ids)
         self.areas.sort()
         print(np.unique(np.round(np.sqrt(self.areas))))
 
