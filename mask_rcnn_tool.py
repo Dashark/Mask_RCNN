@@ -29,7 +29,7 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
 
 import os
 import sys
-import json
+import json, math
 import datetime
 from datetime import datetime
 import numpy as np
@@ -75,13 +75,13 @@ class MyConfig(Config):
     IMAGES_PER_GPU = 1
 
     # Number of classes (including background)
-    NUM_CLASSES = 1 + 7  # Background + my
+    NUM_CLASSES = 1 + 3  # Background + my
 
     # Number of training steps per epoch
     STEPS_PER_EPOCH = 1000
 
     # Skip detections with < 90% confidence
-    DETECTION_MIN_CONFIDENCE = 0.9
+    DETECTION_MIN_CONFIDENCE = 0.5
 
     IMAGE_RESIZE_MODE = "pad64"
     IMAGE_MIN_DIM = 640  
@@ -136,13 +136,14 @@ class MyDataset(utils.Dataset):
         # }
         # We mostly care about the x and y coordinates of each region
         # Note: In VIA 2.0, regions was changed from a dict to a list.
-        annotations = json.load(open(os.path.join(dataset_dir, "via_region_data.json")))
+        annotations = json.load(open(os.path.join(dataset_dir, "via_region_data.json"),encoding='UTF-8'))
         annotations = list(annotations.values())  # don't need the dict keys
 
         # The VIA tool saves images in the JSON even if they don't have any
         # annotations. Skip unannotated images.
         annotations = [a for a in annotations if a['regions']]
 
+        print(class_dict)
         # Add images
         for a in annotations:
             # Get the x, y coordinaets of points of the polygons that make up
@@ -176,7 +177,7 @@ class MyDataset(utils.Dataset):
                 polygons=polygons,
                 class_ids=class_ids)
         self.areas.sort()
-        print(np.unique(np.round(np.sqrt(self.areas))))
+        #print(np.unique(np.round(np.sqrt(self.areas))))
 
     def load_mask(self, image_id):
         """Generate instance masks for an image.
@@ -285,8 +286,27 @@ def display_differences(image,
     #     title=title)
     return gt_match, pred_match, overlaps
 
+def toSquareBox(bbox):
+    """bbox:[y1, x1, y2, x2]
+    将它按照宽高比转换为正方形
+    并调整左上和右下的坐标
+    
+    正方形的坐标 [y1, x1, y2, x2]
+    """
+    box_height = bbox[2] - bbox[0]
+    box_width = bbox[3] - bbox[1]
+    wh_ratio = box_width / box_height
+    box_size = box_width / math.sqrt(wh_ratio)
+    y1 = int(bbox[0] + box_height / 2 - box_size / 2)
+    y2 = int(y1 + box_size)
+    x1 = int(bbox[1] + box_width / 2 - box_size / 2)
+    x2 = int(x1 + box_size)
+    
+    return wh_ratio, box_size, box_height * box_width, [y1, x1, y2, x2]
+
 def recall(model, class_names):
     class_dict = {}
+    label_dict = ['background']
     if args.label:
         label_file = open(args.label)
         label_lines = label_file.readlines()
@@ -294,6 +314,7 @@ def recall(model, class_names):
         for label_line in label_lines:
             label_line = label_line.replace('\n', '')
             class_dict[label_line] = label_id
+            label_dict.append(label_line)
             label_id = label_id + 1
 
     # Validation dataset
@@ -313,29 +334,87 @@ def recall(model, class_names):
         pre_scores_dict[i] = 0.0
         gt_total_dict[i] = 0
 
+    backbone_shapes = modellib.compute_backbone_shapes(config, [768,1280,3])
+    anchor_boxes = utils.generate_pyramid_anchors(
+                config.RPN_ANCHOR_SCALES,
+                config.RPN_ANCHOR_RATIOS,
+                backbone_shapes,
+                config.BACKBONE_STRIDES,
+                config.RPN_ANCHOR_STRIDE)
+    #utils.generate_anchors(300, config.RPN_ANCHOR_RATIOS, [40,40], 32, config.RPN_ANCHOR_STRIDE)
+    #print(anchor_boxes)
+
+    rois = []
+    obj_groups = []
+    # {image_file, [gt_class_id], [gt_box, (y1,x1,y2,x2)], [gt_bbox_area], [gt_wh_ratio], [gt_mask_area], [gt_mask_ratio], [gt_size], }
     for image_id in dataset_val.image_ids:
         image, image_meta, gt_class_id, gt_box, gt_mask = modellib.load_image_gt(dataset_val, config, image_id, use_mini_mask=False)
-        
+        #print(image.shape)
+        gt_detects = {}
+        gt_detects['image'] = dataset_val.image_reference(image_id)
+        gt_detects['gt_class_id'] = gt_class_id
+        gt_detects['gt_bbox'] = gt_box
+        gt_detects['gt_bbox_area'] = []
+        gt_detects['gt_wh_ratio'] = []
+        gt_detects['gt_mask_area'] = []
+        gt_detects['gt_mask_ratio'] = []
+        gt_detects['gt_size'] = []
         for i in range(0, len(gt_class_id)):
             gt_total_dict[gt_class_id[i]] = gt_total_dict[gt_class_id[i]] + 1
 
-        start_time = time.time()
+            wh_ratio, box_size, box_area, square_box = toSquareBox(gt_box[i])
+            mask_area = np.sum(gt_mask[:,:,i]==True)
+            mask_ratio = mask_area / box_area
+            gt_detects['gt_bbox_area'].append(box_area)
+            gt_detects['gt_wh_ratio'].append(wh_ratio)
+            gt_detects['gt_mask_area'].append(mask_area)
+            gt_detects['gt_mask_ratio'].append(mask_ratio)
+            gt_detects['gt_size'].append(box_size)
+
         molded_image = modellib.mold_image(image, config)
-        results = model.detect_molded(np.expand_dims(molded_image, 0), np.expand_dims(image_meta, 0), verbose=1)
+        #print(molded_image.shape)
+        # Anchors
+        """
+        anchors = model.get_anchors(molded_image.shape)
+        # Duplicate across the batch dimension because Keras requires it
+        # TODO: can this be optimized to avoid duplicating the anchors?
+        anchors = np.broadcast_to(anchors, (config.BATCH_SIZE,) + anchors.shape)
+        print(anchors)
+        # Run object detection
+        detections, mrcnn_class, mrcnn_bbox, mrcnn_mask, rpn_rois, rpn_class, rpn_bbox =\
+            model.keras_model.predict([np.expand_dims(molded_image, 0), np.expand_dims(image_meta, 0), anchors], verbose=0)
+        print(detections[0])
+        print(mrcnn_class[0])
+        print(rpn_class[0])
+        """
+        #skimage.io.imsave("test.jpg", image)
+        start_time = time.time()
+        results = model.detect_molded(np.expand_dims(molded_image, 0), np.expand_dims(image_meta, 0), verbose=0)
         end_time = time.time()
-        print("Time: %s" % str(end_time - start_time))
-        print(results)
+        #print("Time: %s" % str(end_time - start_time))
+        #print(results)
         r = results[0]
         pre_class_ids = r['class_ids']
         for i in range(0, len(pre_class_ids)):
             pre_total_dict[pre_class_ids[i]] = pre_total_dict[pre_class_ids[i]] + 1
         pre_scores = r['scores']
+        #print(r['rois'])
+        for roi in r['rois']:
+            whr, bsize, _, _ = toSquareBox(roi)
+            rois.append([bsize, whr])
+            #print(gt_detects['gt_size'])
+            #overlaps = utils.compute_iou(roi, gt_detects['gt_bbox'], roi_area, gt_detects['gt_bbox_area'])
+            #print(overlaps)
         gt_match, pred_match, overlap = display_differences(image,
                         gt_box, gt_class_id, gt_mask,
                         r['rois'], pre_class_ids, pre_scores, r['masks'],
                         class_names, title="", ax=None,
                         show_mask=True, show_box=True,
                         iou_threshold=0.1, score_threshold=0.1)
+        gt_detects['rois'] = r['rois']
+        gt_detects['gt_match'] = gt_match
+        gt_detects['pred_match'] = pred_match
+        #print(gt_match)
         """
         visualize.display_differences(image,
                         gt_box, gt_class_id, gt_mask,
@@ -346,10 +425,30 @@ def recall(model, class_names):
         """
         for i in range(0, len(pred_match)):
             if pred_match[i] > -1.0:
+                #print(r['rois'][i])
                 pre_correct_dict[pre_class_ids[i]] = pre_correct_dict[pre_class_ids[i]] + 1
                 pre_iou_dict[pre_class_ids[i]] = pre_iou_dict[pre_class_ids[i]] + overlap[i, int(pred_match[i])]
                 pre_scores_dict[pre_class_ids[i]] = pre_scores_dict[pre_class_ids[i]] + pre_scores[i]
+        obj_groups.append(gt_detects)
+    #print(rois)
 
+    print("图片,类别,标注框,标注宽高比,标注尺寸,检测框,检测宽高比,检测尺寸,最大IOU")
+    for det in obj_groups:
+        for i in range(0, len(det['gt_class_id'])):
+            overlaped = utils.compute_overlaps(anchor_boxes, np.reshape(det['gt_bbox'][i],(1,4)))
+            omax = max(overlaped)
+            #if det['gt_size'][i] > 150 and det['gt_size'][i] < 367:
+            if omax[0] > 0.0:
+                print(det['image'], end='')
+                print(",", label_dict[det['gt_class_id'][i]], ",", det['gt_bbox'][i], ",", det['gt_wh_ratio'][i], ",", det['gt_size'][i], end="")
+                if det['gt_match'][i] > -1.0:
+                    idx = int(det['gt_match'][i])
+                    #print(idx, det['rois'])
+                    whr, bsize, _, _ = toSquareBox(det['rois'][idx])
+                    print(",", det['rois'][idx], ",", whr, ",", bsize, ",", omax[0])
+                else:
+                    print(",", 0, ",", 0, ",", 0, ",", omax[0])
+        
 
     tol_pre_correct_dict = 0
     tol_pre_total_dict = 0
@@ -407,11 +506,14 @@ def recall(model, class_names):
         tol_precision = 0
 
     totle_line = '{:s},{:d},{:d},{:d},{:d},{:.2f},{:.2f}%,{:.2f},{:.2f}%,{:.2f}%\n'.format('Total', len(dataset_val.image_ids), tol_pre_correct_dict, tol_pre_total_dict, tol_gt_total_dict, type_rps_img, tol_avg_iou * 100, tol_avg_score, tol_recall * 100, tol_precision * 100)
+    print(totle_line)
     lines.append(totle_line)
+    
     result_file_name = "result_{:%Y%m%dT%H%M%S}.csv".format(datetime.now())
     result_file = open(result_file_name, 'w+')
     result_file.writelines(lines)
     result_file.close()
+    
     # *** This training schedule is an example. Update to your needs ***
     # Since we're using a very small dataset, and starting from
     # COCO trained weights, we don't need to train too long. Also,
@@ -601,11 +703,11 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             ax.add_patch(p)
     ax.imshow(masked_image.astype(np.uint8))
     # ax.savefig('test.png')
-    plt.savefig(result_path)
+    #plt.savefig(result_path)
     # ax.clf()
-    plt.close()
-    # if auto_show:
-    #     plt.show()
+    #plt.close()
+    if auto_show:
+        plt.show()
     # return ax
 
 def test_image(model, class_names, result_image_path, image_path, config):
@@ -617,8 +719,9 @@ def test_image(model, class_names, result_image_path, image_path, config):
         print("Running on {}".format(image_path))
         # Read image
         image = skimage.io.imread(image_path)
+        print(image.shape)
         # Detect objects
-        r = model.detect([image], verbose=0)[0]
+        r = model.detect([image], verbose=1)[0]
         # print(r)
         # Color splash
         display_instances(image, r['rois'], r['masks'], r['class_ids'], 
@@ -629,7 +732,7 @@ def test_image(model, class_names, result_image_path, image_path, config):
             min_scale=config.IMAGE_MIN_SCALE,
             max_dim=config.IMAGE_MAX_DIM,
             mode=config.IMAGE_RESIZE_MODE)
-        skimage.io.imsave("test.jpg", image)
+        #skimage.io.imsave("test.jpg", image)
         print("window: (y1, x1, y2, x2)=",window)
         print("scale=",scale)
         print("padding:[(top, bottom), (left, right), (0, 0)]=",padding)
@@ -740,10 +843,10 @@ if __name__ == '__main__':
         class InferenceConfig(MyConfig):
             # NUM_CLASSES = len(class_names)
             IMAGES_PER_GPU = 1
-            NUM_CLASSES = 8
+            # NUM_CLASSES = 8
             BACKBONE = "resnet50"
-            RPN_ANCHOR_SCALES = (50,100,200,300,0)
-            RPN_ANCHOR_RATIOS = [0.25,1,1.5]
+            RPN_ANCHOR_SCALES = (30,50,70,80,100)
+            RPN_ANCHOR_RATIOS = [0.4,0.6,0.9]
             RPN_ANCHOR_STRIDE = 2
             IMAGE_RESIZE_MODE = "square"
             IMAGE_MIN_DIM = 640
@@ -760,7 +863,7 @@ if __name__ == '__main__':
             TRAIN_ROIS_PER_IMAGE = 30
             MAX_GT_INSTANCES = 30
 
-            FPN_CLASSIF_FC_LAYERS_SIZE = 8
+            #FPN_CLASSIF_FC_LAYERS_SIZE = 8
         config = InferenceConfig()
     else:
         class InferenceConfig(MyConfig):
@@ -768,17 +871,19 @@ if __name__ == '__main__':
             # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
             
             IMAGES_PER_GPU = 1
-            NUM_CLASSES = 8
+            # NUM_CLASSES = 8
             BACKBONE = "resnet50"
-            RPN_ANCHOR_SCALES = (50,100,200,300,0)
-            RPN_ANCHOR_RATIOS = [0.25,1,1.5]
+            #BACKBONE_STRIDES = [4, 8, 16, 32, 64]
+            RPN_ANCHOR_SCALES= (30,50,70,80,100)
+            #RPN_ANCHOR_SCALES= (50,100,200,300,0)
+            RPN_ANCHOR_RATIOS = [0.4,0.6,0.9]
             RPN_ANCHOR_STRIDE = 2
-            IMAGE_RESIZE_MODE = "pad64"
+            IMAGE_RESIZE_MODE = "square"
             IMAGE_MIN_DIM = 640
             IMAGE_MAX_DIM = 1280
             IMAGE_MIN_SCALE = 0
             LEARNING_RATE = 0.001
-
+            
             RPN_TRAIN_ANCHORS_PER_IMAGE=32
             POST_NMS_ROIS_TRAINING = 300
             POST_NMS_ROIS_INFERENCE = 30
@@ -786,9 +891,9 @@ if __name__ == '__main__':
             USE_MINI_MASK=False
             TRAIN_ROIS_PER_IMAGE = 30
             MAX_GT_INSTANCES = 30
+            PRE_NMS_LIMIT = 300
 
-            FPN_CLASSIF_FC_LAYERS_SIZE = 8
-            
+            #FPN_CLASSIF_FC_LAYERS_SIZE = 8
             
         config = InferenceConfig()
     config.display()
@@ -814,7 +919,7 @@ if __name__ == '__main__':
         # Start from ImageNet trained weights
         weights_path = model.get_imagenet_weights()
     elif args.weights.lower() == "mymask":
-        weights_path = ""
+        weights_path = model.find_last() #""
     else:
         weights_path = args.weights
 
@@ -827,7 +932,9 @@ if __name__ == '__main__':
             "mrcnn_class_logits", "mrcnn_bbox_fc",
             "mrcnn_bbox", "mrcnn_mask"])
     elif args.weights.lower() == "mymask":
-        pass
+        #pass
+        model.load_weights(weights_path, by_name=True)
+        model.load_weights(weights_path, by_name=True)
     else:
         model.load_weights(weights_path, by_name=True)
 
