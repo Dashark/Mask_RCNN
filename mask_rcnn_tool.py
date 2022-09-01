@@ -75,7 +75,7 @@ class MyConfig(Config):
     IMAGES_PER_GPU = 1
 
     # Number of classes (including background)
-    NUM_CLASSES = 1 + 3  # Background + my
+    NUM_CLASSES = 1 + 6  # Background + my
 
     # Number of training steps per epoch
     STEPS_PER_EPOCH = 1000
@@ -151,7 +151,8 @@ class MyDataset(utils.Dataset):
             # shape_attributes (see json format above)
             # The if condition is needed to support VIA versions 1.x and 2.x.
             # print(a['regions'])
-            # print(a['filename'])
+            print(a['filename'])
+
             if type(a['regions']) is dict:
                 polygons = [r['shape_attributes'] for r in a['regions'].values()]
                 class_ids = [class_dict[r['region_attributes']['type']] for r in a['regions'].values()]
@@ -244,7 +245,7 @@ def train(model):
     print("Training network heads")
     model.train(dataset_train, dataset_val,
                 learning_rate=config.LEARNING_RATE,
-                epochs=600,
+                epochs=1500,
                 layers='all')
 
 
@@ -348,6 +349,8 @@ def recall(model, class_names):
     obj_groups = []
     # {image_file, [gt_class_id], [gt_box, (y1,x1,y2,x2)], [gt_bbox_area], [gt_wh_ratio], [gt_mask_area], [gt_mask_ratio], [gt_size], }
     for image_id in dataset_val.image_ids:
+        print(dataset_val.image_reference(image_id))
+
         image, image_meta, gt_class_id, gt_box, gt_mask = modellib.load_image_gt(dataset_val, config, image_id, use_mini_mask=False)
         #print(image.shape)
         gt_detects = {}
@@ -709,6 +712,44 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
     if auto_show:
         plt.show()
     # return ax
+    
+def display_instances3(image, boxes, masks, ids, names, scores):
+    """
+        take the image and results and apply the mask, box, and Label
+    """
+    import cv2 as cv
+    n_instances = boxes.shape[0]
+    # colors = random_colors(n_instances)
+
+    colors = {1:(1.0,0.0,0.0), 2:(0.0,1.0,0.0), 3:(0.0,0.0,1.0), 4:(0.5,0.0,0.0), 5:(0.0,0.5,0.0), 6:(0.0,0.0,0.5), 7:(0.25,0.0,0.0)}
+    colors2 = {1:(255,0,0), 2:(0,255,0), 3:(0,0,255), 4:(128,0,0), 5:(0,128,0), 6:(0,0,128), 7:(64,0,0)}
+ 
+    if not n_instances:
+        print('NO INSTANCES TO DISPLAY')
+    else:
+        assert boxes.shape[0] == masks.shape[-1] == ids.shape[0]
+
+    for i in range(n_instances):
+    # for i, color in enumerate(boxes):
+        if not np.any(boxes[i]):
+            continue
+ 
+        # if ids[i] == 0 or  ids[i] == 2 or ids[i] == 3:
+        #     continue
+
+        y1, x1, y2, x2 = boxes[i]
+        label = names[ids[i]]
+        score = scores[i] if scores is not None else None
+        caption = '{} {:.2f}'.format(label, score) if score else label
+        mask = masks[:, :, i]
+ 
+        image = apply_mask(image, mask, colors[ids[i]])
+        image = cv.rectangle(image, (x1, y1), (x2, y2), colors2[ids[i]], 2)
+        image = cv.putText(
+            image, caption, (x1, y1), cv.FONT_HERSHEY_COMPLEX, 0.7, colors2[ids[i]], 2
+        )
+ 
+    return image
 
 def test_image(model, class_names, result_image_path, image_path, config):
     assert image_path
@@ -740,6 +781,82 @@ def test_image(model, class_names, result_image_path, image_path, config):
         print("Saved to ", result_image_path)
 
 def test_video(model, class_names, result_video_path, video_path):
+    assert video_path
+
+    if video_path:
+        import cv2 as cv
+        # Video capture
+        print(video_path)
+        vcapture = cv.VideoCapture(video_path)
+        width = int(vcapture.get(cv.CAP_PROP_FRAME_WIDTH))
+        height = int(vcapture.get(cv.CAP_PROP_FRAME_HEIGHT))
+        fps = vcapture.get(cv.CAP_PROP_FPS)
+
+        # Define codec and create video writer
+        print('width: %d, height: %d, fps: %d' % (width, height, fps))
+        vwriter = cv.VideoWriter(result_video_path,
+                                  cv.VideoWriter_fourcc(*'DIVX'),
+                                  fps, (width, height))
+
+        
+        success = True
+        frames = []
+        frames2 = []
+        frame_count = 0
+
+        while success:
+            print("frame: ", frame_count)
+            # Read next image
+            success, frame = vcapture.read()
+            if not success:
+                break
+            
+            frame_count += 1
+            frames.append(frame)
+            # OpenCV returns images as BGR, convert to RGB
+            frame2 = frame[..., ::-1]
+            frames2.append(frame2)
+            
+            
+            
+            # Detect objects
+            results = model.detect(frames2, verbose=0)
+
+            for i, item in enumerate(zip(frames, results)):
+                frame = item[0]
+                r = item[1]
+                frame = display_instances3(
+                    frame, r['rois'], r['masks'], r['class_ids'], class_names, r['scores']
+                )
+                name = '{0}.jpg'.format(frame_count + i)
+                name = os.path.join('./', name)
+                # cv.imwrite(name, frame)
+                vwriter.write(frame)
+                # print('writing to file:{0}'.format(name))
+            # Clear the frames array to start the next batch
+            frames = []
+            frames2 = []
+            # result_image_path = 'tmp.png' 
+            # # Color splash
+            # display_instances(image, r['rois'], r['masks'], r['class_ids'], 
+            #             class_names, result_image_path, r['scores'])
+            # new_frame = cv.imread(result_image_path)
+            # splash = color_splash(image, r['masks'])
+            # splash = splash[..., ::-1]
+            # cv.imwrite(result_image_path, splash)
+            # RGB -> BGR to save image to video
+            
+            # Add image to video writer
+            # RGB -> BGR to save image to video
+            # splash = splash[..., ::-1]
+            # Add image to video writer
+            # vwriter.write(new_frame)
+            # count += 1
+            # if count == 80:
+            #     break
+        vwriter.release()
+
+def test_video2(model, class_names, result_video_path, video_path):
     assert video_path
 
     if video_path:
@@ -841,15 +958,15 @@ if __name__ == '__main__':
     # Configurations
     if args.command == "train":
         class InferenceConfig(MyConfig):
-            # NUM_CLASSES = len(class_names)
+            NUM_CLASSES = len(class_names)
             IMAGES_PER_GPU = 1
             # NUM_CLASSES = 8
             BACKBONE = "resnet50"
-            RPN_ANCHOR_SCALES = (30,50,70,80,100)
-            RPN_ANCHOR_RATIOS = [0.4,0.6,0.9]
+            RPN_ANCHOR_SCALES = (5,50,100,200,350)
+            RPN_ANCHOR_RATIOS = [0.1,1.0,2.0]
             RPN_ANCHOR_STRIDE = 2
             IMAGE_RESIZE_MODE = "square"
-            IMAGE_MIN_DIM = 640
+            IMAGE_MIN_DIM = 960
             IMAGE_MAX_DIM = 1280
             IMAGE_MIN_SCALE = 0
             LEARNING_RATE = 0.001
@@ -869,18 +986,16 @@ if __name__ == '__main__':
         class InferenceConfig(MyConfig):
             # Set batch size to 1 since we'll be running inference on
             # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
-            
+            NUM_CLASSES = len(class_names)
             IMAGES_PER_GPU = 1
             # NUM_CLASSES = 8
             BACKBONE = "resnet50"
-            #BACKBONE_STRIDES = [4, 8, 16, 32, 64]
-            RPN_ANCHOR_SCALES= (30,50,70,80,100)
-            #RPN_ANCHOR_SCALES= (50,100,200,300,0)
-            RPN_ANCHOR_RATIOS = [0.4,0.6,0.9]
+            RPN_ANCHOR_SCALES = (5,50,100,200,350)
+            RPN_ANCHOR_RATIOS = [0.1,1.0,2.0]
             RPN_ANCHOR_STRIDE = 2
             IMAGE_RESIZE_MODE = "square"
             IMAGE_MIN_DIM = 640
-            IMAGE_MAX_DIM = 1280
+            IMAGE_MAX_DIM = 960
             IMAGE_MIN_SCALE = 0
             LEARNING_RATE = 0.001
             
