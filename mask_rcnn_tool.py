@@ -690,7 +690,8 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
 
         # Mask
         mask = masks[:, :, i]
-        if show_mask:
+        if show_mask and class_names[class_ids[i]] == 'fish_head':
+            indices = np.argwhere(mask==1)
             masked_image = apply_mask(masked_image, mask, color)
 
         # Mask Polygon
