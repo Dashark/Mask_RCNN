@@ -603,7 +603,7 @@ def apply_mask(image, mask, color, alpha=0.5):
     """Apply the given mask to the image.
     """
     for c in range(3):
-        image[:, :, c] = np.where(mask == 1,
+        image[:, :, c] = np.where(mask == True,
                                   image[:, :, c] *
                                   (1 - alpha) + alpha * color[c] * 255,
                                   image[:, :, c])
@@ -624,7 +624,7 @@ def random_colors(N, bright=True):
 def display_instances(image, boxes, masks, class_ids, class_names, result_path,
                       scores=None, title="",
                       figsize=(16, 16), ax=None,
-                      show_mask=True, show_bbox=True,
+                      show_mask=True, show_bbox=False,
                       colors=None, captions=None):
     """
     boxes: [num_instance, (y1, x1, y2, x2, class_id)] in image coordinates.
@@ -685,17 +685,21 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             caption = "{} {:.3f}".format(label, score) if score else label
         else:
             caption = captions[i]
-        ax.text(x1, y1 + 8, caption,
-                color='w', size=11, backgroundcolor="none")
+        #ax.text(x1, y1 + 8, caption,
+        #        color='w', size=11, backgroundcolor="none")
 
         # Mask
         mask = masks[:, :, i]
-        if show_mask and class_names[class_ids[i]] == 'fish_head':
-            indices = np.argwhere(mask==1)
-            masked_image = apply_mask(masked_image, mask, color)
+        if show_mask and (class_names[class_ids[i]] == 'fish_head'):
+            print(class_names[class_ids[i]])
+            maskroll = np.roll(mask, 1, axis=1)
+            m = np.logical_xor(mask, maskroll)
+            masked_image = apply_mask(masked_image, m, color)
 
         # Mask Polygon
         # Pad to ensure proper polygons for masks that touch image edges.
+        if class_names[class_ids[i]] != 'fish_head':
+            continue
         padded_mask = np.zeros(
             (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
         padded_mask[1:-1, 1:-1] = mask
@@ -703,15 +707,26 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
         for verts in contours:
             # Subtract the padding and flip (y, x) to (x, y)
             verts = np.fliplr(verts) - 1
-            p = Polygon(verts, facecolor="none", edgecolor=color)
+            # print(verts)
+            rb = np.max(verts, axis=0)
+            # print(verts[verts[:,1]==rb[1]])
+            # rb = np.max(verts[], axis=0)
+            lt = np.min(verts, axis=0)
+            ti = np.argmin(verts, axis=0)
+            print(ti)
+            # v = verts[verts[:,0]>(rb[0]-30)]
+            v = verts[ti[1]:,:]
+            # print(v)
+            p = Polygon(v, facecolor="none", edgecolor=color)
+            np.savetxt(result_path+'.txt', v)
             ax.add_patch(p)
     ax.imshow(masked_image.astype(np.uint8))
     # ax.savefig('test.png')
-    #plt.savefig(result_path)
+    plt.savefig(result_path)
     # ax.clf()
     #plt.close()
-    if auto_show:
-        plt.show()
+    # if auto_show:
+    #     plt.show()
     # return ax
     
 def display_instances3(image, boxes, masks, ids, names, scores):
@@ -752,20 +767,25 @@ def display_instances3(image, boxes, masks, ids, names, scores):
  
     return image
 
+import glob
+
 def test_image(model, class_names, result_image_path, image_path, config):
     assert image_path
 
     # Image or video?
-    if image_path:
+    for image_name in glob.glob(image_path):
         # Run model detection and generate the color splash effect
-        print("Running on {}".format(image_path))
+        print("Running on {}".format(image_name))
         # Read image
-        image = skimage.io.imread(image_path)
+        image = skimage.io.imread(image_name)
         print(image.shape)
         # Detect objects
-        r = model.detect([image], verbose=1)[0]
+        r = model.detect([image], verbose=0)[0]
         # print(r)
         # Color splash
+        dt = datetime.now().strftime('%Y%m%d%H%M%S')
+        result_image_path = image_name + '_result.png'
+
         display_instances(image, r['rois'], r['masks'], r['class_ids'], 
                             class_names, result_image_path, r['scores'])
         image, window, scale, padding, crop = utils.resize_image(
@@ -774,7 +794,7 @@ def test_image(model, class_names, result_image_path, image_path, config):
             min_scale=config.IMAGE_MIN_SCALE,
             max_dim=config.IMAGE_MAX_DIM,
             mode=config.IMAGE_RESIZE_MODE)
-        #skimage.io.imsave("test.jpg", image)
+        #skimage.io.imsave(result_image_path, image)
         print("window: (y1, x1, y2, x2)=",window)
         print("scale=",scale)
         print("padding:[(top, bottom), (left, right), (0, 0)]=",padding)
