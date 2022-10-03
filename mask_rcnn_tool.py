@@ -716,6 +716,15 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             print(ti)
             # v = verts[verts[:,0]>(rb[0]-30)]
             v = verts[ti[1]:,:]
+            # 我需要通过拟合得到一个点的集合，XY需要交换一下
+            v1 = v[:, [1,0]]
+            coef = np.polyfit(v1[:,0], v1[:, 1], 2)
+            x_fit = np.polyval(coef, v1[:, 0])
+            # 合并成一个集合
+            v1[:, 1] = x_fit
+            v1[:, [0, 1]] = v1[:, [1, 0]]
+            co = Polygon(v1, facecolor="none", edgecolor=colors[0])
+            ax.add_patch(co)
             # print(v)
             p = Polygon(v, facecolor="none", edgecolor=color)
             np.savetxt(result_path+'.txt', v)
