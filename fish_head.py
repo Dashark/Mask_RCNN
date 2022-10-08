@@ -215,40 +215,6 @@ class MyDataset(utils.Dataset):
         else:
             super(self.__class__, self).image_reference(image_id)
 
-
-def train(model):
-    """Train the model."""
-    class_dict = {}
-    if args.label:
-        label_file = open(args.label)
-        label_lines = label_file.readlines()
-        label_id = 1
-        for label_line in label_lines:
-            label_line = label_line.replace('\n', '')
-            class_dict[label_line] = label_id
-            label_id = label_id + 1
-
-    # Training dataset.
-    dataset_train = MyDataset()
-    dataset_train.load_my(args.dataset, "train", class_dict)
-    dataset_train.prepare()
-
-    # Validation dataset
-    dataset_val = MyDataset()
-    dataset_val.load_my(args.dataset, "val", class_dict)
-    dataset_val.prepare()
-
-    # *** This training schedule is an example. Update to your needs ***
-    # Since we're using a very small dataset, and starting from
-    # COCO trained weights, we don't need to train too long. Also,
-    # no need to train all layers, just the heads should do it.
-    print("Training network heads")
-    model.train(dataset_train, dataset_val,
-                learning_rate=config.LEARNING_RATE,
-                epochs=1500,
-                layers='all')
-
-
 def display_differences(image,
                         gt_box, gt_class_id, gt_mask,
                         pred_box, pred_class_id, pred_score, pred_mask,
@@ -304,224 +270,6 @@ def toSquareBox(bbox):
     x2 = int(x1 + box_size)
     
     return wh_ratio, box_size, box_height * box_width, [y1, x1, y2, x2]
-
-def recall(model, class_names):
-    class_dict = {}
-    label_dict = ['background']
-    if args.label:
-        label_file = open(args.label)
-        label_lines = label_file.readlines()
-        label_id = 1
-        for label_line in label_lines:
-            label_line = label_line.replace('\n', '')
-            class_dict[label_line] = label_id
-            label_dict.append(label_line)
-            label_id = label_id + 1
-
-    # Validation dataset
-    dataset_val = MyDataset()
-    dataset_val.load_my(args.dataset, "val", class_dict)
-    dataset_val.prepare()
-
-    pre_correct_dict = {}
-    pre_total_dict = {}
-    pre_iou_dict = {}
-    pre_scores_dict = {}
-    gt_total_dict = {}
-    for i in range(1, len(class_dict) + 1):
-        pre_correct_dict[i] = 0
-        pre_total_dict[i] = 0
-        pre_iou_dict[i] = 0.0
-        pre_scores_dict[i] = 0.0
-        gt_total_dict[i] = 0
-
-    backbone_shapes = modellib.compute_backbone_shapes(config, [768,1280,3])
-    anchor_boxes = utils.generate_pyramid_anchors(
-                config.RPN_ANCHOR_SCALES,
-                config.RPN_ANCHOR_RATIOS,
-                backbone_shapes,
-                config.BACKBONE_STRIDES,
-                config.RPN_ANCHOR_STRIDE)
-    #utils.generate_anchors(300, config.RPN_ANCHOR_RATIOS, [40,40], 32, config.RPN_ANCHOR_STRIDE)
-    #print(anchor_boxes)
-
-    rois = []
-    obj_groups = []
-    # {image_file, [gt_class_id], [gt_box, (y1,x1,y2,x2)], [gt_bbox_area], [gt_wh_ratio], [gt_mask_area], [gt_mask_ratio], [gt_size], }
-    for image_id in dataset_val.image_ids:
-        print(dataset_val.image_reference(image_id))
-
-        image, image_meta, gt_class_id, gt_box, gt_mask = modellib.load_image_gt(dataset_val, config, image_id, use_mini_mask=False)
-        #print(image.shape)
-        gt_detects = {}
-        gt_detects['image'] = dataset_val.image_reference(image_id)
-        gt_detects['gt_class_id'] = gt_class_id
-        gt_detects['gt_bbox'] = gt_box
-        gt_detects['gt_bbox_area'] = []
-        gt_detects['gt_wh_ratio'] = []
-        gt_detects['gt_mask_area'] = []
-        gt_detects['gt_mask_ratio'] = []
-        gt_detects['gt_size'] = []
-        for i in range(0, len(gt_class_id)):
-            gt_total_dict[gt_class_id[i]] = gt_total_dict[gt_class_id[i]] + 1
-
-            wh_ratio, box_size, box_area, square_box = toSquareBox(gt_box[i])
-            mask_area = np.sum(gt_mask[:,:,i]==True)
-            mask_ratio = mask_area / box_area
-            gt_detects['gt_bbox_area'].append(box_area)
-            gt_detects['gt_wh_ratio'].append(wh_ratio)
-            gt_detects['gt_mask_area'].append(mask_area)
-            gt_detects['gt_mask_ratio'].append(mask_ratio)
-            gt_detects['gt_size'].append(box_size)
-
-        molded_image = modellib.mold_image(image, config)
-        #print(molded_image.shape)
-        # Anchors
-        """
-        anchors = model.get_anchors(molded_image.shape)
-        # Duplicate across the batch dimension because Keras requires it
-        # TODO: can this be optimized to avoid duplicating the anchors?
-        anchors = np.broadcast_to(anchors, (config.BATCH_SIZE,) + anchors.shape)
-        print(anchors)
-        # Run object detection
-        detections, mrcnn_class, mrcnn_bbox, mrcnn_mask, rpn_rois, rpn_class, rpn_bbox =\
-            model.keras_model.predict([np.expand_dims(molded_image, 0), np.expand_dims(image_meta, 0), anchors], verbose=0)
-        print(detections[0])
-        print(mrcnn_class[0])
-        print(rpn_class[0])
-        """
-        #skimage.io.imsave("test.jpg", image)
-        start_time = time.time()
-        results = model.detect_molded(np.expand_dims(molded_image, 0), np.expand_dims(image_meta, 0), verbose=0)
-        end_time = time.time()
-        #print("Time: %s" % str(end_time - start_time))
-        #print(results)
-        r = results[0]
-        pre_class_ids = r['class_ids']
-        for i in range(0, len(pre_class_ids)):
-            pre_total_dict[pre_class_ids[i]] = pre_total_dict[pre_class_ids[i]] + 1
-        pre_scores = r['scores']
-        #print(r['rois'])
-        for roi in r['rois']:
-            whr, bsize, _, _ = toSquareBox(roi)
-            rois.append([bsize, whr])
-            #print(gt_detects['gt_size'])
-            #overlaps = utils.compute_iou(roi, gt_detects['gt_bbox'], roi_area, gt_detects['gt_bbox_area'])
-            #print(overlaps)
-        gt_match, pred_match, overlap = display_differences(image,
-                        gt_box, gt_class_id, gt_mask,
-                        r['rois'], pre_class_ids, pre_scores, r['masks'],
-                        class_names, title="", ax=None,
-                        show_mask=True, show_box=True,
-                        iou_threshold=0.1, score_threshold=0.1)
-        gt_detects['rois'] = r['rois']
-        gt_detects['gt_match'] = gt_match
-        gt_detects['pred_match'] = pred_match
-        #print(gt_match)
-        """
-        visualize.display_differences(image,
-                        gt_box, gt_class_id, gt_mask,
-                        r['rois'], pre_class_ids, pre_scores, r['masks'],
-                        class_names, title="", ax=None,
-                        show_mask=True, show_box=True,
-                        iou_threshold=0.1, score_threshold=0.1)
-        """
-        for i in range(0, len(pred_match)):
-            if pred_match[i] > -1.0:
-                #print(r['rois'][i])
-                pre_correct_dict[pre_class_ids[i]] = pre_correct_dict[pre_class_ids[i]] + 1
-                pre_iou_dict[pre_class_ids[i]] = pre_iou_dict[pre_class_ids[i]] + overlap[i, int(pred_match[i])]
-                pre_scores_dict[pre_class_ids[i]] = pre_scores_dict[pre_class_ids[i]] + pre_scores[i]
-        obj_groups.append(gt_detects)
-    #print(rois)
-
-    print("图片,类别,标注框,标注宽高比,标注尺寸,检测框,检测宽高比,检测尺寸,最大IOU")
-    for det in obj_groups:
-        for i in range(0, len(det['gt_class_id'])):
-            overlaped = utils.compute_overlaps(anchor_boxes, np.reshape(det['gt_bbox'][i],(1,4)))
-            omax = max(overlaped)
-            #if det['gt_size'][i] > 150 and det['gt_size'][i] < 367:
-            if omax[0] > 0.0:
-                print(det['image'], end='')
-                print(",", label_dict[det['gt_class_id'][i]], ",", det['gt_bbox'][i], ",", det['gt_wh_ratio'][i], ",", det['gt_size'][i], end="")
-                if det['gt_match'][i] > -1.0:
-                    idx = int(det['gt_match'][i])
-                    #print(idx, det['rois'])
-                    whr, bsize, _, _ = toSquareBox(det['rois'][idx])
-                    print(",", det['rois'][idx], ",", whr, ",", bsize, ",", omax[0])
-                else:
-                    print(",", 0, ",", 0, ",", 0, ",", omax[0])
-        
-
-    tol_pre_correct_dict = 0
-    tol_pre_total_dict = 0
-    tol_pre_iou_dict = 0
-    tol_pre_scores_dict = 0
-    tol_gt_total_dict = 0
-    
-    lines = []
-    tile_line = 'Type,Number,Correct,Proposals,Total,Rps/img,Avg IOU,Avg score,Recall,Precision\n'
-    lines.append(tile_line)
-    for key in class_dict:
-        tol_pre_correct_dict = tol_pre_correct_dict + pre_correct_dict[class_dict[key]]
-        tol_pre_total_dict = pre_total_dict[class_dict[key]] + tol_pre_total_dict
-        tol_pre_iou_dict = pre_iou_dict[class_dict[key]] + tol_pre_iou_dict
-        tol_pre_scores_dict = pre_scores_dict[class_dict[key]] + tol_pre_scores_dict
-        tol_gt_total_dict = gt_total_dict[class_dict[key]] + tol_gt_total_dict
-
-        type_rps_img = pre_total_dict[class_dict[key]] / len(dataset_val.image_ids)
-        if pre_correct_dict[class_dict[key]] > 0:
-            type_avg_iou = pre_iou_dict[class_dict[key]] / pre_correct_dict[class_dict[key]]
-            type_avg_score = pre_scores_dict[class_dict[key]] / pre_correct_dict[class_dict[key]]
-        else:
-            type_avg_iou = 0
-            type_avg_score = 0
-
-        if gt_total_dict[class_dict[key]] > 0:
-            type_recall = pre_total_dict[class_dict[key]] / gt_total_dict[class_dict[key]]
-        else:
-            type_recall = 0
-
-        if pre_total_dict[class_dict[key]] > 0:
-            type_precision = pre_correct_dict[class_dict[key]] / pre_total_dict[class_dict[key]]
-        else:
-            type_precision = 0
-        line = '{:s},{:d},{:d},{:d},{:d},{:.2f},{:.2f}%,{:.2f},{:.2f}%,{:.2f}%\n'.format(key, len(dataset_val.image_ids), pre_correct_dict[class_dict[key]], pre_total_dict[class_dict[key]], gt_total_dict[class_dict[key]], type_rps_img, type_avg_iou * 100, type_avg_score, type_recall * 100, type_precision * 100)
-        lines.append(line)
-        print(line)
-
-    tol_rps_img = tol_pre_total_dict / len(dataset_val.image_ids)
-    if tol_pre_correct_dict > 0:
-        tol_avg_iou = tol_pre_iou_dict / tol_pre_correct_dict
-        tol_avg_score = tol_pre_scores_dict / tol_pre_correct_dict
-    else:
-        tol_avg_iou = 0
-        tol_avg_score = 0
-
-    if tol_gt_total_dict > 0:
-        tol_recall = tol_pre_total_dict / tol_gt_total_dict
-    else:
-        tol_recall = 0
-
-    if tol_pre_total_dict > 0:
-        tol_precision = tol_pre_correct_dict / tol_pre_total_dict
-    else:
-        tol_precision = 0
-
-    totle_line = '{:s},{:d},{:d},{:d},{:d},{:.2f},{:.2f}%,{:.2f},{:.2f}%,{:.2f}%\n'.format('Total', len(dataset_val.image_ids), tol_pre_correct_dict, tol_pre_total_dict, tol_gt_total_dict, type_rps_img, tol_avg_iou * 100, tol_avg_score, tol_recall * 100, tol_precision * 100)
-    print(totle_line)
-    lines.append(totle_line)
-    
-    result_file_name = "result_{:%Y%m%dT%H%M%S}.csv".format(datetime.now())
-    result_file = open(result_file_name, 'w+')
-    result_file.writelines(lines)
-    result_file.close()
-    
-    # *** This training schedule is an example. Update to your needs ***
-    # Since we're using a very small dataset, and starting from
-    # COCO trained weights, we don't need to train too long. Also,
-    # no need to train all layers, just the heads should do it.
-
 
 def color_splash(image, mask):
     """Apply color splash effect.
@@ -810,124 +558,6 @@ def test_image(model, class_names, result_image_path, image_path, config):
         print("crop=",crop)
         print("Saved to ", result_image_path)
 
-def test_video(model, class_names, result_video_path, video_path):
-    assert video_path
-
-    if video_path:
-        import cv2 as cv
-        # Video capture
-        print(video_path)
-        vcapture = cv.VideoCapture(video_path)
-        width = int(vcapture.get(cv.CAP_PROP_FRAME_WIDTH))
-        height = int(vcapture.get(cv.CAP_PROP_FRAME_HEIGHT))
-        fps = vcapture.get(cv.CAP_PROP_FPS)
-
-        # Define codec and create video writer
-        print('width: %d, height: %d, fps: %d' % (width, height, fps))
-        vwriter = cv.VideoWriter(result_video_path,
-                                  cv.VideoWriter_fourcc(*'DIVX'),
-                                  fps, (width, height))
-
-        
-        success = True
-        frames = []
-        frames2 = []
-        frame_count = 0
-
-        while success:
-            print("frame: ", frame_count)
-            # Read next image
-            success, frame = vcapture.read()
-            if not success:
-                break
-            
-            frame_count += 1
-            frames.append(frame)
-            # OpenCV returns images as BGR, convert to RGB
-            frame2 = frame[..., ::-1]
-            frames2.append(frame2)
-            
-            
-            
-            # Detect objects
-            results = model.detect(frames2, verbose=0)
-
-            for i, item in enumerate(zip(frames, results)):
-                frame = item[0]
-                r = item[1]
-                frame = display_instances3(
-                    frame, r['rois'], r['masks'], r['class_ids'], class_names, r['scores']
-                )
-                name = '{0}.jpg'.format(frame_count + i)
-                name = os.path.join('./', name)
-                # cv.imwrite(name, frame)
-                vwriter.write(frame)
-                # print('writing to file:{0}'.format(name))
-            # Clear the frames array to start the next batch
-            frames = []
-            frames2 = []
-            # result_image_path = 'tmp.png' 
-            # # Color splash
-            # display_instances(image, r['rois'], r['masks'], r['class_ids'], 
-            #             class_names, result_image_path, r['scores'])
-            # new_frame = cv.imread(result_image_path)
-            # splash = color_splash(image, r['masks'])
-            # splash = splash[..., ::-1]
-            # cv.imwrite(result_image_path, splash)
-            # RGB -> BGR to save image to video
-            
-            # Add image to video writer
-            # RGB -> BGR to save image to video
-            # splash = splash[..., ::-1]
-            # Add image to video writer
-            # vwriter.write(new_frame)
-            # count += 1
-            # if count == 80:
-            #     break
-        vwriter.release()
-
-def test_video2(model, class_names, result_video_path, video_path):
-    assert video_path
-
-    if video_path:
-        import cv2 as cv
-        # Video capture
-        vcapture = cv.VideoCapture(video_path)
-        width = int(vcapture.get(cv.CAP_PROP_FRAME_WIDTH))
-        height = int(vcapture.get(cv.CAP_PROP_FRAME_HEIGHT))
-        fps = vcapture.get(cv.CAP_PROP_FPS)
-
-        # Define codec and create video writer
-        vwriter = cv.VideoWriter(result_video_path,
-                                  cv.VideoWriter_fourcc(*'DIVX'),
-                                  fps, (1600, 1600))
-
-        count = 0
-        success = True
-        while success:
-            print("frame: ", count)
-            # Read next image
-            success, image = vcapture.read()
-            if success:
-                # OpenCV returns images as BGR, convert to RGB
-                image = image[..., ::-1]
-                # Detect objects
-                r = model.detect([image], verbose=0)[0]
-                result_image_path = 'tmp_frame.jpeg' 
-                # Color splash
-                display_instances(image, r['rois'], r['masks'], r['class_ids'], 
-                            class_names, result_image_path, r['scores'])
-                new_frame = cv.imread(result_image_path)
-                # RGB -> BGR to save image to video
-                # splash = splash[..., ::-1]
-                # Add image to video writer
-                vwriter.write(new_frame)
-                count += 1
-            # if count == 80:
-            #     break
-        vwriter.release()
-    
-
 
 ############################################################
 #  Training
@@ -974,73 +604,39 @@ if __name__ == '__main__':
             label_line = label_line.replace('\n', '')
             class_names.append(label_line)
 
-    # Validate arguments
-    if args.command == "train":
-        assert args.dataset, "Argument --dataset is required for training"
-    elif args.command == "splash":
-        assert args.image or args.video,\
-               "Provide --image or --video to apply color splash"
-
     print("Weights: ", args.weights)
     print("Dataset: ", args.dataset)
     print("Logs: ", args.logs)
 
     # Configurations
-    if args.command == "train":
-        class InferenceConfig(MyConfig):
-            NUM_CLASSES = len(class_names)
-            IMAGES_PER_GPU = 1
-            # NUM_CLASSES = 8
-            BACKBONE = "resnet50"
-            RPN_ANCHOR_SCALES = (5,50,100,200,350)
-            RPN_ANCHOR_RATIOS = [0.1,1.0,2.0]
-            RPN_ANCHOR_STRIDE = 2
-            IMAGE_RESIZE_MODE = "square"
-            IMAGE_MIN_DIM = 960
-            IMAGE_MAX_DIM = 1280
-            IMAGE_MIN_SCALE = 0
-            LEARNING_RATE = 0.001
-
-            STEPS_PER_EPOCH = 1000
-            RPN_TRAIN_ANCHORS_PER_IMAGE=32
-            POST_NMS_ROIS_TRAINING = 300
-            POST_NMS_ROIS_INFERENCE = 30
-            RPN_NMS_THRESHOLD = 0.5
-            USE_MINI_MASK=False
-            TRAIN_ROIS_PER_IMAGE = 30
-            MAX_GT_INSTANCES = 30
-
-            #FPN_CLASSIF_FC_LAYERS_SIZE = 8
-        config = InferenceConfig()
-    else:
-        class InferenceConfig(MyConfig):
-            # Set batch size to 1 since we'll be running inference on
-            # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
-            NUM_CLASSES = len(class_names)
-            IMAGES_PER_GPU = 1
-            # NUM_CLASSES = 8
-            BACKBONE = "resnet50"
-            RPN_ANCHOR_SCALES = (5,50,100,200,350)
-            RPN_ANCHOR_RATIOS = [0.1,1.0,2.0]
-            RPN_ANCHOR_STRIDE = 2
-            IMAGE_RESIZE_MODE = "square"
-            IMAGE_MIN_DIM = 640
-            IMAGE_MAX_DIM = 960
-            IMAGE_MIN_SCALE = 0
-            LEARNING_RATE = 0.001
+    class InferenceConfig(MyConfig):
+        # Set batch size to 1 since we'll be running inference on
+        # one image at a time. Batch size = GPU_COUNT * IMAGES_PER_GPU
+        NUM_CLASSES = len(class_names)
+        IMAGES_PER_GPU = 1
+        # NUM_CLASSES = 8
+        BACKBONE = "resnet50"
+        RPN_ANCHOR_SCALES = (5,50,100,200,350)
+        RPN_ANCHOR_RATIOS = [0.1,1.0,2.0]
+        RPN_ANCHOR_STRIDE = 2
+        IMAGE_RESIZE_MODE = "square"
+        IMAGE_MIN_DIM = 640
+        IMAGE_MAX_DIM = 960
+        IMAGE_MIN_SCALE = 0
+        LEARNING_RATE = 0.001
             
-            RPN_TRAIN_ANCHORS_PER_IMAGE=32
-            POST_NMS_ROIS_TRAINING = 300
-            POST_NMS_ROIS_INFERENCE = 30
-            RPN_NMS_THRESHOLD = 0.5
-            USE_MINI_MASK=False
-            TRAIN_ROIS_PER_IMAGE = 30
-            MAX_GT_INSTANCES = 30
-            PRE_NMS_LIMIT = 300
+        RPN_TRAIN_ANCHORS_PER_IMAGE=32
+        POST_NMS_ROIS_TRAINING = 300
+        POST_NMS_ROIS_INFERENCE = 30
+        RPN_NMS_THRESHOLD = 0.5
+        USE_MINI_MASK=False
+        TRAIN_ROIS_PER_IMAGE = 30
+        MAX_GT_INSTANCES = 30
+        PRE_NMS_LIMIT = 300
 
-            #FPN_CLASSIF_FC_LAYERS_SIZE = 8
+        #FPN_CLASSIF_FC_LAYERS_SIZE = 8
             
-        config = InferenceConfig()
+    config = InferenceConfig()
     config.display()
 
     # Create model
