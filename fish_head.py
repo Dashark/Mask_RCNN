@@ -484,6 +484,68 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
     # return ax
     
 
+def binomial_fitting(boxes, masks, class_ids, class_names, result_path)
+    """
+    boxes: [num_instance, (y1, x1, y2, x2, class_id)] in image coordinates.
+    masks: [height, width, num_instances]
+    class_ids: [num_instances]
+    class_names: list of class names of the dataset
+    scores: (optional) confidence scores for each box
+    title: (optional) Figure title
+    show_mask, show_bbox: To show masks and bounding boxes or not
+    figsize: (optional) the size of the image
+    colors: (optional) An array or colors to use with each object
+    captions: (optional) A list of strings to use as captions for each object
+    """
+    # Number of instances
+    N = boxes.shape[0]
+    if not N:
+        print("\n*** No instances to display *** \n")
+    else:
+        assert boxes.shape[0] == masks.shape[-1] == class_ids.shape[0]
+
+    for i in range(N):
+
+        # Bounding box
+        if not np.any(boxes[i]):
+            # Skip this instance. Has no bbox. Likely lost in image cropping.
+            continue
+
+        # Mask
+        mask = masks[:, :, i]
+
+        # Mask Polygon
+        # Pad to ensure proper polygons for masks that touch image edges.
+        if class_names[class_ids[i]] != 'fish_head':
+            continue
+        padded_mask = np.zeros(
+            (mask.shape[0] + 2, mask.shape[1] + 2), dtype=np.uint8)
+        padded_mask[1:-1, 1:-1] = mask
+        contours = find_contours(padded_mask, 0.5)
+        for verts in contours:
+            # Subtract the padding and flip (y, x) to (x, y)
+            verts = np.fliplr(verts) - 1
+            # print(verts)
+            rb = np.max(verts, axis=0)
+            # print(verts[verts[:,1]==rb[1]])
+            # rb = np.max(verts[], axis=0)
+            lt = np.min(verts, axis=0)
+            ti = np.argmin(verts, axis=0)
+            print(ti)
+            # v = verts[verts[:,0]>(rb[0]-30)]
+            v = verts[ti[1]:,:] # 分割的边界
+            # 我需要通过拟合得到一个点的集合，XY需要交换一下
+            v1 = v[:, [1,0]]
+            coef = np.polyfit(v1[:,0], v1[:, 1], 2)
+            x_fit = np.polyval(coef, v1[:, 0])
+            # 合并成一个集合
+            v1[:, 1] = x_fit
+            v1[:, [0, 1]] = v1[:, [1, 0]]   # 拟合的边界
+            # print(v)
+            np.savetxt(result_path+'.txt', v)
+    #     plt.show()
+    # return ax
+
 import glob
 
 def test_image(model, class_names, result_image_path, image_path, config):
