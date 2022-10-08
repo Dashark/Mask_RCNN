@@ -51,9 +51,6 @@ from mrcnn.config import Config
 from mrcnn import model as modellib, utils
 from mrcnn import visualize
 
-# Path to trained weights file
-COCO_WEIGHTS_PATH = "D:\\Projects\\Mask_RCNN\\mask_rcnn_coco.h5"
-
 # Directory to save logs and model checkpoints, if not provided
 # through the command line argument --logs
 DEFAULT_LOGS_DIR = "logs"
@@ -585,9 +582,6 @@ if __name__ == '__main__':
     parser.add_argument('--image', required=False,
                         metavar="path or URL to image",
                         help='Image to apply the color splash effect on')
-    parser.add_argument('--video', required=False,
-                        metavar="path or URL to video",
-                        help='Video to apply the color splash effect on')
     parser.add_argument('--label', required=False,
                         metavar="path or label",
                         help='label to classes')
