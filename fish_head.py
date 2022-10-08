@@ -483,43 +483,6 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
     #     plt.show()
     # return ax
     
-def display_instances3(image, boxes, masks, ids, names, scores):
-    """
-        take the image and results and apply the mask, box, and Label
-    """
-    import cv2 as cv
-    n_instances = boxes.shape[0]
-    # colors = random_colors(n_instances)
-
-    colors = {1:(1.0,0.0,0.0), 2:(0.0,1.0,0.0), 3:(0.0,0.0,1.0), 4:(0.5,0.0,0.0), 5:(0.0,0.5,0.0), 6:(0.0,0.0,0.5), 7:(0.25,0.0,0.0)}
-    colors2 = {1:(255,0,0), 2:(0,255,0), 3:(0,0,255), 4:(128,0,0), 5:(0,128,0), 6:(0,0,128), 7:(64,0,0)}
- 
-    if not n_instances:
-        print('NO INSTANCES TO DISPLAY')
-    else:
-        assert boxes.shape[0] == masks.shape[-1] == ids.shape[0]
-
-    for i in range(n_instances):
-    # for i, color in enumerate(boxes):
-        if not np.any(boxes[i]):
-            continue
- 
-        # if ids[i] == 0 or  ids[i] == 2 or ids[i] == 3:
-        #     continue
-
-        y1, x1, y2, x2 = boxes[i]
-        label = names[ids[i]]
-        score = scores[i] if scores is not None else None
-        caption = '{} {:.2f}'.format(label, score) if score else label
-        mask = masks[:, :, i]
- 
-        image = apply_mask(image, mask, colors[ids[i]])
-        image = cv.rectangle(image, (x1, y1), (x2, y2), colors2[ids[i]], 2)
-        image = cv.putText(
-            image, caption, (x1, y1), cv.FONT_HERSHEY_COMPLEX, 0.7, colors2[ids[i]], 2
-        )
- 
-    return image
 
 import glob
 
