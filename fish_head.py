@@ -484,7 +484,7 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
     # return ax
     
 
-def binomial_fitting(boxes, masks, class_ids, class_names, result_path)
+def binomial_fitting(boxes, masks, class_ids, class_names, result_path):
     """
     boxes: [num_instance, (y1, x1, y2, x2, class_id)] in image coordinates.
     masks: [height, width, num_instances]
@@ -557,9 +557,18 @@ def test_image(model, class_names, result_image_path, image_path, config):
         print("Running on {}".format(image_name))
         # Read image
         image = skimage.io.imread(image_name)
+        image, window, scale, padding, crop = utils.resize_image(
+            image,
+            min_dim=config.IMAGE_MIN_DIM,
+            min_scale=config.IMAGE_MIN_SCALE,
+            max_dim=config.IMAGE_MAX_DIM,
+            mode=config.IMAGE_RESIZE_MODE)
         print(image.shape)
         # Detect objects
+        t5=int(round((time.time())*1000))
         r = model.detect([image], verbose=0)[0]
+        t6=int(round((time.time())*1000))
+        print("t6-t5=",(t6-t5))
         # print(r)
         # Color splash
         dt = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -567,19 +576,20 @@ def test_image(model, class_names, result_image_path, image_path, config):
 
         display_instances(image, r['rois'], r['masks'], r['class_ids'], 
                             class_names, result_image_path, r['scores'])
+        """
         image, window, scale, padding, crop = utils.resize_image(
             image,
             min_dim=config.IMAGE_MIN_DIM,
             min_scale=config.IMAGE_MIN_SCALE,
             max_dim=config.IMAGE_MAX_DIM,
             mode=config.IMAGE_RESIZE_MODE)
-        #skimage.io.imsave(result_image_path, image)
+        skimage.io.imsave(result_image_path, image)
         print("window: (y1, x1, y2, x2)=",window)
         print("scale=",scale)
         print("padding:[(top, bottom), (left, right), (0, 0)]=",padding)
-        print("crop=",crop)
+        # print("crop=",crop)
         print("Saved to ", result_image_path)
-
+        """
 
 ############################################################
 #  Training
