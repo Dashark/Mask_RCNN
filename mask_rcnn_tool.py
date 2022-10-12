@@ -720,6 +720,11 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             v1 = v[:, [1,0]]
             coef = np.polyfit(v1[:,0], v1[:, 1], 2)
             x_fit = np.polyval(coef, v1[:, 0])
+            fx = np.poly1d(coef)
+            dfx = fx.deriv()   # 一阶导
+            ddfx = dfx.deriv() # 二阶导
+            r = ddfx(v1[:, 0])/(1 + dfx(v1[:, 0])**2)**(3.0/2.0)
+            np.savetxt("r.txt", r)
             # 合并成一个集合
             v1[:, 1] = x_fit
             v1[:, [0, 1]] = v1[:, [1, 0]]
