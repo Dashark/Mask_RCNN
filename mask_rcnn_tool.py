@@ -726,9 +726,20 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             r = ddfx(v1[:, 0])/(1 + dfx(v1[:, 0])**2)**(3.0/2.0)
             np.savetxt("r.txt", r)
             # 一维变二维，数据分组，比如分成20组
+            indices = [3]
+            while (len(r) - indices[-1]) > 3:
+                a = np.split(r, indices)
+                if np.var(a[-2]) < 0.00001:
+                    indices[-1] += 1
+                elif np.var(a[-1]) < 0.00001:
+                    break
+                else:
+                    indices = np.append(indices, indices[-1]+3)
+            print(indices)
+            """
             # 按照 indices 分组
             l = int(len(r) / 10)
-            inds = np.arange(0, len(r), l)   # 分组索引
+            inds = np.arange(l, len(r), l)   # 分组索引
             a = np.split(r, inds)
             # 计算每一组的方差
             var = [np.var(e) for e in a]
@@ -744,7 +755,7 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
                     iv[0] += 1
                 else:
                     iv[0] -= 1
-            
+            """
             # 结束后取每组的首尾作为最终结果
             # 合并成一个集合
             v1[:, 1] = x_fit
