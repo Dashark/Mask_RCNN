@@ -725,6 +725,27 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             ddfx = dfx.deriv() # 二阶导
             r = ddfx(v1[:, 0])/(1 + dfx(v1[:, 0])**2)**(3.0/2.0)
             np.savetxt("r.txt", r)
+            # 一维变二维，数据分组，比如分成20组
+            # 按照 indices 分组
+            l = int(len(r) / 10)
+            inds = np.arange(0, len(r), l)   # 分组索引
+            a = np.split(r, inds)
+            # 计算每一组的方差
+            var = [np.var(e) for e in a]
+            print(var)
+            indss = np.append(inds, 0)  # 补充一位对齐
+            ind_var = np.array([indss, var]).T  # 转置后配对
+            # 方差很小的，合并；方差很大的，就拆分？Numpy二维怎么合并拆分？
+            # 当前方差小，则合并后续的一个。移动一个数据。
+            # 当前方差大，则拆分一个数据给后续。移动一个数据。
+            # 结束条件是什么呢？所有方差在阈值以下？
+            for iv in ind_var:
+                if iv[1] < threshold:
+                    iv[0] += 1
+                else:
+                    iv[0] -= 1
+            
+            # 结束后取每组的首尾作为最终结果
             # 合并成一个集合
             v1[:, 1] = x_fit
             v1[:, [0, 1]] = v1[:, [1, 0]]
