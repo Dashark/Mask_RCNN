@@ -723,18 +723,21 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             fx = np.poly1d(coef)
             dfx = fx.deriv()   # 一阶导
             ddfx = dfx.deriv() # 二阶导
-            r = ddfx(v1[:, 0])/(1 + dfx(v1[:, 0])**2)**(3.0/2.0)
+            r = abs(ddfx(v1[:, 0]))/(1 + dfx(v1[:, 0])**2)**(3.0/2.0)
             np.savetxt("r.txt", r)
+            print(np.var(r))
             # 一维变二维，数据分组，比如分成20组
-            indices = [3]
-            while (len(r) - indices[-1]) > 3:
-                a = np.split(r, indices)
-                if np.var(a[-2]) < 0.00001:
-                    indices[-1] += 1
-                elif np.var(a[-1]) < 0.00001:
+            indices = [3]   # 最少3个点为一组子序列
+            while (len(r) - indices[-1]) > 3:    # 有足够点分配就循环
+                a = np.split(r, indices)  # 分组 r 曲率
+                if np.var(a[-2]) < 0.000001:   # 方差够小
+                    indices[-1] += 1          # 增加子序列数量
+                elif np.var(a[-1]) < -0.001:  # 最后子序列方差够小则结束循环
                     break
                 else:
-                    indices = np.append(indices, indices[-1]+3)
+                    indices = np.append(indices, indices[-1]+3)  # 添加一个子序列
+            indices = np.insert(indices, 0, 0)
+            print(v[indices])
             print(indices)
             """
             # 按照 indices 分组
@@ -760,12 +763,14 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             # 合并成一个集合
             v1[:, 1] = x_fit
             v1[:, [0, 1]] = v1[:, [1, 0]]
-            co = Polygon(v1, facecolor="none", edgecolor=colors[0])
+            co = Polygon(v1, facecolor="none", edgecolor=color)
             ax.add_patch(co)
             # print(v)
-            p = Polygon(v, facecolor="none", edgecolor=color)
+            p = Polygon(v[indices], facecolor="none", edgecolor="red")
             np.savetxt(result_path+'.txt', v)
-            ax.add_patch(p)
+            # ax.add_patch(p)
+            vv = v1[indices].T
+            ax.plot(vv[0], vv[1], 'go-')
     ax.imshow(masked_image.astype(np.uint8))
     # ax.savefig('test.png')
     plt.savefig(result_path)
