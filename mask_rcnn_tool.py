@@ -720,9 +720,10 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             v1 = v[:, [1,0]]
             coef = np.polyfit(v1[:,0], v1[:, 1], 2)
             x_fit = np.polyval(coef, v1[:, 0])
-            # MSE = np.linalg.norm(v1-v, ord=2)**2/len(v)
-            # RMSE = np.linalg.norm(v1-v, ord=2)/len(v)**0.5
-            # MAE = np.linalg.norm(v1-v, ord=1)/len(v)
+            MSE = np.linalg.norm(x_fit - v[:, 0], ord=2)**2/len(v)
+            RMSE = np.linalg.norm(x_fit - v[:, 0], ord=2)/len(v)**0.5
+            MAE = np.linalg.norm(x_fit - v[:, 0], ord=1)/len(v)
+            print('MSE: ', MSE, 'RMSE: ', RMSE, 'MAE: ', MAE)
             fx = np.poly1d(coef)
             dfx = fx.deriv()   # 一阶导
             ddfx = dfx.deriv() # 二阶导
