@@ -718,8 +718,9 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             v = verts[ti[1]:,:]
             # 我需要通过拟合得到一个点的集合，XY需要交换一下
             v1 = v[:, [1,0]]
-            coef = np.polyfit(v1[:,0], v1[:, 1], 2)
+            coef = np.polyfit(v1[:,0], v1[:, 1], 4)
             x_fit = np.polyval(coef, v1[:, 0])
+            print(len(v1), len(x_fit))
             MSE = np.linalg.norm(x_fit - v[:, 0], ord=2)**2/len(v)
             RMSE = np.linalg.norm(x_fit - v[:, 0], ord=2)/len(v)**0.5
             MAE = np.linalg.norm(x_fit - v[:, 0], ord=1)/len(v)
@@ -741,8 +742,21 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
                 else:
                     indices = np.append(indices, indices[-1]+3)  # 添加一个子序列
             indices = np.insert(indices, 0, 0)
-            print(v[indices])
+            # print(v[indices], v1[indices])
+            # print(v[0:20, :], x_fit[0:20])
             print(indices)
+            # print(v1[indices[0:2], 1])
+            x_fit1 = np.array([])
+            next = indices
+            while len(next) >= 2:
+                one, _ = np.split(next, [2])
+                coef = np.polyfit(v1[one, 0], v1[one, 1], 1)
+                x_fit1 = np.append(x_fit1, np.polyval(coef, v1[one[0]:one[1], 0]))
+                print(one, len(x_fit1))
+                # print(x_fit1, x_fit[indices[0]:indices[1]+1])
+                # print(v[0:20, :])
+                _, next = np.split(next, [1])
+            print(np.linalg.norm(x_fit1 - x_fit[:indices[-1]], ord=2)**2/len(x_fit1))
             """
             # 按照 indices 分组
             l = int(len(r) / 10)
@@ -767,12 +781,13 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             # 合并成一个集合
             v1[:, 1] = x_fit
             v1[:, [0, 1]] = v1[:, [1, 0]]
+            print(v1[0:20])
             co = Polygon(v1, facecolor="none", edgecolor=color)
             ax.add_patch(co)
             # print(v)
-            p = Polygon(v[indices], facecolor="none", edgecolor="red")
+            p = Polygon(v, facecolor="none", edgecolor="red")
             np.savetxt(result_path+'.txt', v)
-            # ax.add_patch(p)
+            ax.add_patch(p)
             vv = v1[indices].T
             ax.plot(vv[0], vv[1], 'go-')
     ax.imshow(masked_image.astype(np.uint8))
