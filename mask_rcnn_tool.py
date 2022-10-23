@@ -708,26 +708,35 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             # Subtract the padding and flip (y, x) to (x, y)
             verts = np.fliplr(verts) - 1
             # print(verts)
-            rb = np.max(verts, axis=0)
+            # rb = np.max(verts, axis=0)
             # print(verts[verts[:,1]==rb[1]])
             # rb = np.max(verts[], axis=0)
-            lt = np.min(verts, axis=0)
+            # lt = np.min(verts, axis=0)
             ti = np.argmin(verts, axis=0)
             print(ti)
             # v = verts[verts[:,0]>(rb[0]-30)]
             v = verts[ti[1]:,:]
-            # 我需要通过拟合得到一个点的集合，XY需要交换一下
+            # 通过拟合得到一个点的集合，XY需要交换一下
             v1 = v[:, [1,0]]
-            coef = np.polyfit(v1[:,0], v1[:, 1], 4)
-            x_fit = np.polyval(coef, v1[:, 0])
-            print(len(v1), len(x_fit))
-            MSE = np.linalg.norm(x_fit - v[:, 0], ord=2)**2/len(v)
-            RMSE = np.linalg.norm(x_fit - v[:, 0], ord=2)/len(v)**0.5
-            MAE = np.linalg.norm(x_fit - v[:, 0], ord=1)/len(v)
-            print('MSE: ', MSE, 'RMSE: ', RMSE, 'MAE: ', MAE)
-            fx = np.poly1d(coef)
+            # 多次拟合得到结果的MSE
+            MSEs = np.array([])
+            coefs = np.array([])
+            for i in range(1, 5):
+                coef = np.polyfit(v1[:,0], v1[:, 1], i)
+                coefs = np.append(coefs, coef)
+                x_fit = np.polyval(coef, v1[:, 0])
+                # print(len(v1), len(x_fit))
+                MSE = np.linalg.norm(x_fit - v[:, 0], ord=2)**2/len(v)
+                MSEs = np.append(MSEs, MSE)
+            # RMSE = np.linalg.norm(x_fit - v[:, 0], ord=2)/len(v)**0.5
+            # MAE = np.linalg.norm(x_fit - v[:, 0], ord=1)/len(v)
+            print('MSEs: ', MSEs) #, 'RMSE: ', RMSE, 'MAE: ', MAE)
+            diffMSE = np.diff(MSEs)
+            print(np.where(diffMSE < 1.0))
+            fx = np.poly1d(coef[i])
             dfx = fx.deriv()   # 一阶导
             ddfx = dfx.deriv() # 二阶导
+            # TODO v1中元素值不是均匀的，存在r值的跨度
             r = abs(ddfx(v1[:, 0]))/(1 + dfx(v1[:, 0])**2)**(3.0/2.0)
             np.savetxt("r.txt", r)
             print(np.var(r))
@@ -756,7 +765,7 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
                 # print(x_fit1, x_fit[indices[0]:indices[1]+1])
                 # print(v[0:20, :])
                 _, next = np.split(next, [1])
-            print(np.linalg.norm(x_fit1 - x_fit[:indices[-1]], ord=2)**2/len(x_fit1))
+            print('MSE:', np.linalg.norm(x_fit1 - x_fit[:indices[-1]], ord=2)**2/len(x_fit1))
             """
             # 按照 indices 分组
             l = int(len(r) / 10)
