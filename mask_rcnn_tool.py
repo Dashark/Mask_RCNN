@@ -720,10 +720,10 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             v1 = v[:, [1,0]]
             # 多次拟合得到结果的MSE
             MSEs = np.array([])
-            coefs = np.array([])
+            coefs = []
             for i in range(1, 5):
                 coef = np.polyfit(v1[:,0], v1[:, 1], i)
-                coefs = np.append(coefs, coef)
+                coefs.append(coef)
                 x_fit = np.polyval(coef, v1[:, 0])
                 # print(len(v1), len(x_fit))
                 MSE = np.linalg.norm(x_fit - v[:, 0], ord=2)**2/len(v)
@@ -731,15 +731,24 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             # RMSE = np.linalg.norm(x_fit - v[:, 0], ord=2)/len(v)**0.5
             # MAE = np.linalg.norm(x_fit - v[:, 0], ord=1)/len(v)
             print('MSEs: ', MSEs) #, 'RMSE: ', RMSE, 'MAE: ', MAE)
+            print('COEFS: ', coefs)
             diffMSE = np.diff(MSEs)
-            print(np.where(diffMSE < 1.0))
-            fx = np.poly1d(coef[i])
+            print('diffMSE: ', abs(diffMSE))
+            co_ind = np.where(abs(diffMSE) < 1.0)  # 拟合的MSE差异中选择一个
+            print(co_ind)
+            fx = np.poly1d(coefs[co_ind[0][0]]) # 暂时选择一个
             dfx = fx.deriv()   # 一阶导
             ddfx = dfx.deriv() # 二阶导
             # TODO v1中元素值不是均匀的，存在r值的跨度
-            r = abs(ddfx(v1[:, 0]))/(1 + dfx(v1[:, 0])**2)**(3.0/2.0)
+            print(v1)
+            # print(np.argmax(v1, axis=0)[0])
+            # print(np.argmin(v1, axis=0)[0])
+            # print(v1[np.argmin(v1, axis=0)[0]][0])
+            v11 = np.arange(v1[np.argmin(v1, axis=0)[0]][0], v1[np.argmax(v1, axis=0)[0]][0])
+            print(v11, len(v11))
+            r = abs(ddfx(v11))/(1 + dfx(v11)**2)**(3.0/2.0)
             np.savetxt("r.txt", r)
-            print(np.var(r))
+            print('CUT Circle VAR: ', np.var(r))
             # 一维变二维，数据分组，比如分成20组
             indices = [3]   # 最少3个点为一组子序列
             while (len(r) - indices[-1]) > 3:    # 有足够点分配就循环
@@ -747,13 +756,16 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
                 if np.var(a[-2]) < 0.000001:   # 方差够小
                     indices[-1] += 1          # 增加子序列数量
                 elif np.var(a[-1]) < -0.001:  # 最后子序列方差够小则结束循环
+                    print(a[-1])
+                    print(np.var(a[-1]))
                     break
                 else:
                     indices = np.append(indices, indices[-1]+3)  # 添加一个子序列
+            indices = np.append(indices, indices[-1])
             indices = np.insert(indices, 0, 0)
             # print(v[indices], v1[indices])
             # print(v[0:20, :], x_fit[0:20])
-            print(indices)
+            print('INDICES: ', indices)
             # print(v1[indices[0:2], 1])
             x_fit1 = np.array([])
             next = indices
