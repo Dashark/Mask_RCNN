@@ -734,18 +734,19 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             print('COEFS: ', coefs)
             diffMSE = np.diff(MSEs)
             print('diffMSE: ', abs(diffMSE))
-            co_ind = np.where(abs(diffMSE) < 1.0)  # 拟合的MSE差异中选择一个
-            print(co_ind)
-            fx = np.poly1d(coefs[co_ind[0][0]]) # 暂时选择一个
+            co_ind = np.where(abs(diffMSE) < 1.0)  # 拟合的MSE差异中选择一个 < 1.0 的
+            print('coef index: ', co_ind)
+            fx = np.poly1d(coefs[co_ind[0][0]]) # 选择一个合适的
             dfx = fx.deriv()   # 一阶导
             ddfx = dfx.deriv() # 二阶导
             # TODO v1中元素值不是均匀的，存在r值的跨度
-            print(v1)
+            print(v1, len(v1))
             # print(np.argmax(v1, axis=0)[0])
             # print(np.argmin(v1, axis=0)[0])
             # print(v1[np.argmin(v1, axis=0)[0]][0])
             v11 = np.arange(v1[np.argmin(v1, axis=0)[0]][0], v1[np.argmax(v1, axis=0)[0]][0])
             print(v11, len(v11))
+            v12 = np.polyval(coefs[co_ind[0][0]], v11)
             r = abs(ddfx(v11))/(1 + dfx(v11)**2)**(3.0/2.0)
             np.savetxt("r.txt", r)
             print('CUT Circle VAR: ', np.var(r))
@@ -761,7 +762,6 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
                     break
                 else:
                     indices = np.append(indices, indices[-1]+3)  # 添加一个子序列
-            indices = np.append(indices, indices[-1])
             indices = np.insert(indices, 0, 0)
             # print(v[indices], v1[indices])
             # print(v[0:20, :], x_fit[0:20])
@@ -772,7 +772,7 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             while len(next) >= 2:
                 one, _ = np.split(next, [2])
                 coef = np.polyfit(v1[one, 0], v1[one, 1], 1)
-                x_fit1 = np.append(x_fit1, np.polyval(coef, v1[one[0]:one[1], 0]))
+                x_fit1 = np.append(x_fit1, np.polyval(coef, v11[one[0]:one[1]]))
                 print(one, len(x_fit1))
                 # print(x_fit1, x_fit[indices[0]:indices[1]+1])
                 # print(v[0:20, :])
@@ -810,7 +810,7 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             np.savetxt(result_path+'.txt', v)
             ax.add_patch(p)
             vv = v1[indices].T
-            ax.plot(vv[0], vv[1], 'go-')
+            ax.plot(v12, v11, 'go-')
     ax.imshow(masked_image.astype(np.uint8))
     # ax.savefig('test.png')
     plt.savefig(result_path)
