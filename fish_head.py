@@ -536,6 +536,50 @@ def binomial_fitting(boxes, masks, class_ids, class_names, result_path):
             v = verts[ti[1]:,:] # 分割的边界
             # 我需要通过拟合得到一个点的集合，XY需要交换一下
             v1 = v[:, [1,0]]
+            # 均方差集合
+            MSEs = np.array([])
+            coefs = [] # 拟合的集合
+            for i in range(1, 5): 
+                coef = np.polyfit(v1[:,0], v1[:, 1], i) # 拟合
+                coefs.append(coef)
+                x_fit = np.polyval(coef, v1[:, 0]) # 拟合后的值
+                # print(len(v1), len(x_fit))
+                # 原值与拟合值的均方差
+                MSE = np.linalg.norm(x_fit - v[:, 0], ord=2)**2/len(v)
+                MSEs = np.append(MSEs, MSE)
+            diffMSE = np.diff(MSEs) # 拟合的均方差的差异
+            co_ind = np.where(abs(diffMSE) < 1.0)  # 拟合的MSE差异中选择一个 < 1.0 的
+            fx = np.poly1d(coefs[co_ind[0][0]]) # 选择一个合适的
+            dfx = fx.deriv()   # 一阶导
+            ddfx = dfx.deriv() # 二阶导
+            # 产生一个均匀的数据集
+            v11 = np.arange(v1[np.argmin(v1, axis=0)[0]][0], v1[np.argmax(v1, axis=0)[0]][0])
+            v12 = np.polyval(coefs[co_ind[0][0]], v11) # 计算拟合多项式的值
+            r = abs(ddfx(v11))/(1 + dfx(v11)**2)**(3.0/2.0) # 计算密切圆的曲率
+            indices = [3]   # 最少3个点为一组子序列
+            while (len(r) - indices[-1]) > 3:    # 有足够点分配就循环
+                a = np.split(r, indices)  # 分组 r 曲率
+                if np.var(a[-2]) < 0.000001:   # 方差够小
+                    indices[-1] += 1          # 增加子序列数量
+                elif np.var(a[-1]) < -0.001:  # 最后子序列方差够小则结束循环
+                    print(a[-1])
+                    print(np.var(a[-1]))
+                    break
+                else:
+                    indices = np.append(indices, indices[-1]+3)  # 添加一个子序列
+            indices = np.insert(indices, 0, 0)
+            x_fit1 = np.array([])
+            next = indices
+            while len(next) >= 2:
+                one, _ = np.split(next, [2])
+                coef = np.polyfit(v1[one, 0], v1[one, 1], 1) # 拟合一项式
+                x_fit1 = np.append(x_fit1, np.polyval(coef, v11[one[0]:one[1]]))
+                print(one, len(x_fit1))
+                # print(x_fit1, x_fit[indices[0]:indices[1]+1])
+                # print(v[0:20, :])
+                _, next = np.split(next, [1])
+            # 计算结果 MSE
+            print('MSE:', np.linalg.norm(x_fit1 - x_fit[:indices[-1]], ord=2)**2/len(x_fit1))
             coef = np.polyfit(v1[:,0], v1[:, 1], 2)
             x_fit = np.polyval(coef, v1[:, 0])
             # 合并成一个集合
