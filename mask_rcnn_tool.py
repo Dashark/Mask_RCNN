@@ -748,12 +748,15 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             print(v11, len(v11))
             v12 = np.polyval(coefs[co_ind[0][0]], v11)
             r = abs(ddfx(v11))/(1 + dfx(v11)**2)**(3.0/2.0)
+            # print(1./r)
             np.savetxt("r.txt", r)
             print('CUT Circle VAR: ', np.var(r))
+            print('CUT Circle VAR: ', np.var(1./r))
             # 一维变二维，数据分组，比如分成20组
             indices = [3]   # 最少3个点为一组子序列
             while (len(r) - indices[-1]) > 3:    # 有足够点分配就循环
                 a = np.split(r, indices)  # 分组 r 曲率
+                print(np.var(1./a[-2]))
                 if np.var(a[-2]) < 0.000001:   # 方差够小
                     indices[-1] += 1          # 增加子序列数量
                 elif np.var(a[-1]) < -0.001:  # 最后子序列方差够小则结束循环
@@ -771,13 +774,18 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             next = indices
             while len(next) >= 2:
                 one, _ = np.split(next, [2])
-                coef = np.polyfit(v1[one, 0], v1[one, 1], 1)
+                coef = np.polyfit(v11[one], v12[one], 1)
+                # print(v11[one], v12[one])
+                # print(v11[one[0]], v11[one[1]])
                 x_fit1 = np.append(x_fit1, np.polyval(coef, v11[one[0]:one[1]]))
-                print(one, len(x_fit1))
+                # print(x_fit1)
+                # print(one, len(x_fit1))
                 # print(x_fit1, x_fit[indices[0]:indices[1]+1])
                 # print(v[0:20, :])
                 _, next = np.split(next, [1])
-            print('MSE:', np.linalg.norm(x_fit1 - x_fit[:indices[-1]], ord=2)**2/len(x_fit1))
+            print('MSE:', np.linalg.norm(x_fit1 - v12[:indices[-1]], ord=2)**2/len(x_fit1))
+            # print(x_fit1)
+            # print(v12[:indices[-1]])
             """
             # 按照 indices 分组
             l = int(len(r) / 10)
@@ -810,7 +818,7 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             np.savetxt(result_path+'.txt', v)
             ax.add_patch(p)
             vv = v1[indices].T
-            ax.plot(v12, v11, 'go-')
+            ax.plot(v12[indices], v11[indices], 'go-')
     ax.imshow(masked_image.astype(np.uint8))
     # ax.savefig('test.png')
     plt.savefig(result_path)
