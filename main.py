@@ -90,9 +90,6 @@ if __name__ == '__main__':
             print("t3-t1=",(t3-t1))
             print("t3-t2=",(t3-t2))
             # 结果需要放回Redis
-            cv2.imshow('py', image)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
         else:
             print('image is None.')
             time.sleep(1)
