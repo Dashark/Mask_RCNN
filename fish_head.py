@@ -600,7 +600,8 @@ def test_image(model, class_names, result_image_path, image_path, config):
         # Run model detection and generate the color splash effect
         print("Running on {}".format(image_name))
         # Read image
-        image = skimage.io.imread(image_name)
+        # image = skimage.io.imread(image_name)
+        # 图像变换在外面做
         image, window, scale, padding, crop = utils.resize_image(
             image,
             min_dim=config.IMAGE_MIN_DIM,
@@ -610,6 +611,7 @@ def test_image(model, class_names, result_image_path, image_path, config):
         print(image.shape)
         # Detect objects
         t5=int(round((time.time())*1000))
+        # 单独做
         r = model.detect([image], verbose=0)[0]
         t6=int(round((time.time())*1000))
         print("t6-t5=",(t6-t5))
@@ -618,6 +620,7 @@ def test_image(model, class_names, result_image_path, image_path, config):
         dt = datetime.now().strftime('%Y%m%d%H%M%S')
         result_image_path = image_name + '_result.png'
 
+        # 结果要与Redis配合的
         display_instances(image, r['rois'], r['masks'], r['class_ids'], 
                             class_names, result_image_path, r['scores'])
         """
@@ -636,10 +639,11 @@ def test_image(model, class_names, result_image_path, image_path, config):
         """
 
 ############################################################
-#  Training
+#  代码要移动到Redis
 ############################################################
 
-if __name__ == '__main__':
+# 初始化MaskRCNN环境
+def init_mask_rcnn():
     import argparse
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     # Parse command line arguments
@@ -742,6 +746,7 @@ if __name__ == '__main__':
         print("t2:",t2)
         dt = datetime.now().strftime('%Y%m%d%H%M%S')
         result_image_path = dt + '_result.png'
+        # 重新设计参数
         test_image(model, class_names, result_image_path, args.image, config)
 
         print("t1:",t1)
