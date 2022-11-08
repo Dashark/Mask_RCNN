@@ -192,7 +192,7 @@ def binomial_fitting(boxes, masks, class_ids, class_names):
                 # print(v[0:20, :])
                 _, next = np.split(next, [1])
             # 计算结果 MSE
-            print('MSE:', np.linalg.norm(x_fit1 - v12[:indices[-1]], ord=2)**2/len(x_fit1))
+            MSE = np.linalg.norm(x_fit1 - v12[:indices[-1]], ord=2)**2/len(x_fit1))
             coef = np.polyfit(v1[:,0], v1[:, 1], 2)
             x_fit = np.polyval(coef, v1[:, 0])
             # 合并成一个集合
@@ -201,7 +201,7 @@ def binomial_fitting(boxes, masks, class_ids, class_names):
             # print(v)
             # np.savetxt(result_path+'.txt', v)
     #     plt.show()
-    return v1
+    return v1, MSE
 
 
 ############################################################

@@ -83,13 +83,18 @@ if __name__ == '__main__':
             r = model.detect([image], verbose=0)[0]
             t6=int(round((time.time())*1000))
             print("t6-t5=",(t6-t5))
-            pts = fish_head.binomial_fitting(r['rois'], r['masks'], r['class_ids'], class_names)
+            pts, mse = fish_head.binomial_fitting(r['rois'], r['masks'], r['class_ids'], class_names)
+            print(pts)
+            print(mse)
             image = fish_head.display_instances(image, pts)
 
             t3=int(round((time.time()) * 1000))
             print("t3-t1=",(t3-t1))
             print("t3-t2=",(t3-t2))
             # 结果需要放回Redis
+            cv2.imshow("test", image)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
         else:
             print('image is None.')
             time.sleep(1)
