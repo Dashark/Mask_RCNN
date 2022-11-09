@@ -1,5 +1,4 @@
-import cv2
-import time
+import time, skimage
 from redisdb import messager as redis
 import fish_head
 from mrcnn import utils
@@ -64,9 +63,10 @@ if __name__ == '__main__':
     class_names = ['BG', 'fish_head', 'fish_eye', 'fish_tail', 'fish_body', 'lateral_fin', 'ventral_fin']
     config = InferenceConfig()
     config.display()
-    model = fish_head.init_mask_rcnn(config)   # 按照缺省参数初始化，不在循环内
+    model, image_name = fish_head.init_mask_rcnn(config)   # 按照缺省参数初始化，不在循环内
     while True:
-        image = redis.fetch_request()
+        # image = redis.fetch_request()
+        image = skimage.io.imread(image_name)
         if image is not None:
             image, window, scale, padding, crop = utils.resize_image(
                 image,
@@ -92,9 +92,6 @@ if __name__ == '__main__':
             print("t3-t1=",(t3-t1))
             print("t3-t2=",(t3-t2))
             # 结果需要放回Redis
-            cv2.imshow("test", image)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
         else:
             print('image is None.')
             time.sleep(1)

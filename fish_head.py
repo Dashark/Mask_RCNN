@@ -96,10 +96,13 @@ def display_instances(image, points, title="",
     ax.axis('off')
     ax.set_title(title)
 
-    masked_image = image.astype(np.uint32).copy()
-    print(points)
-    ax.imshow(masked_image.astype(np.uint8))
-    return masked_image
+    # masked_image = image.astype(np.uint32).copy()
+    # print(points)
+    rpts = points.T
+    ax.plot(rpts[0], rpts[1], 'go-')
+    ax.imshow(image.astype(np.uint8))
+    plt.savefig('test.jpg')
+    return image
 
 def binomial_fitting(boxes, masks, class_ids, class_names):
     """
@@ -192,7 +195,7 @@ def binomial_fitting(boxes, masks, class_ids, class_names):
                 # print(v[0:20, :])
                 _, next = np.split(next, [1])
             # 计算结果 MSE
-            MSE = np.linalg.norm(x_fit1 - v12[:indices[-1]], ord=2)**2/len(x_fit1))
+            MSE = np.linalg.norm(x_fit1 - v12[:indices[-1]], ord=2)**2/len(x_fit1)
             coef = np.polyfit(v1[:,0], v1[:, 1], 2)
             x_fit = np.polyval(coef, v1[:, 0])
             # 合并成一个集合
@@ -201,7 +204,7 @@ def binomial_fitting(boxes, masks, class_ids, class_names):
             # print(v)
             # np.savetxt(result_path+'.txt', v)
     #     plt.show()
-    return v1, MSE
+    return np.array([v12[indices], v11[indices]]).T, MSE
 
 
 ############################################################
@@ -266,4 +269,4 @@ def init_mask_rcnn(config):
     else:
         model.load_weights(weights_path, by_name=True)
 
-    return model
+    return model, args.image
