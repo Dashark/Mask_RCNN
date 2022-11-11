@@ -41,6 +41,7 @@ from matplotlib.patches import Polygon
 import matplotlib.pyplot as plt
 import colorsys
 import random
+from io import BytesIO
 
 # Root directory of the project
 # ROOT_DIR = os.path.abspath(".\\")
@@ -102,7 +103,9 @@ def display_instances(image, points, title="",
     ax.plot(rpts[0], rpts[1], 'go-')
     ax.imshow(image.astype(np.uint8))
     plt.savefig('test.jpg')
-    return image
+    figdata = BytesIO()
+    plt.savefig(figdata, format='png')
+    return figdata.getvalue()
 
 def binomial_fitting(boxes, masks, class_ids, class_names):
     """
