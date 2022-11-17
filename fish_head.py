@@ -107,6 +107,29 @@ def display_instances(image, points, title="",
     plt.savefig(figdata, format='png')
     return figdata.getvalue()
 
+def polynominal_fitting(points, mse_threshold, ploy_threshold):
+    """
+    points: 离散点的集合[[x, y]...]
+    mse_threshold: 预期的MSE上限
+    poly_threshold: 拟合的最高项数
+    
+    return: 拟合结果及其MSE
+    """
+    # 均方差集合
+    MSEs = np.array([])
+    coefs = [] # 拟合的集合
+    for i in range(ploy_threshold): 
+        coef = np.polyfit(points[:,0], points[:, 1], i) # 拟合
+        coefs.append(coef)
+        fits = np.polyval(coef, points[:, 0]) # 拟合后的值
+        # print(len(v1), len(x_fit))
+        # 原值与拟合值的均方差
+        MSE = np.linalg.norm(fits - points[:, 0], ord=2)**2/len(v)
+        MSEs = np.append(MSEs, MSE)
+    diffMSE = np.diff(MSEs) # 拟合的均方差的差异
+    co_ind = np.argmin(abs(diffMSE))  # 拟合的MSE差异中选择一个最小的
+    return coefs[co_ind], MSEs[co_ind]
+
 def binomial_fitting(boxes, masks, class_ids, class_names):
     """
     boxes: [num_instance, (y1, x1, y2, x2, class_id)] in image coordinates.
