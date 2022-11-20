@@ -107,7 +107,7 @@ def display_instances(image, points, title="",
     plt.savefig(figdata, format='png')
     return figdata.getvalue()
 
-def polynominal_fitting(points, mse_threshold, ploy_threshold):
+def polynominal_fitting(points, ploy_threshold):
     """
     points: 离散点的集合[[x, y]...]
     mse_threshold: 预期的MSE上限
@@ -130,6 +130,18 @@ def polynominal_fitting(points, mse_threshold, ploy_threshold):
     co_ind = np.argmin(abs(diffMSE))  # 拟合的MSE差异中选择一个最小的
     return coefs[co_ind], MSEs[co_ind]
 
+def osculating_r(points, coef):
+    # 产生一个均匀的数据集，不要重复值，间隔均匀
+    v11 = np.arange(points[np.argmin(points, axis=0)[0]][0], points[np.argmax(points, axis=0)[0]][0])
+    v12 = np.polyval(coef, v11) # 计算拟合多项式的值
+    # 拟合函数
+    fx = np.poly1d(coef) # 选择一个合适的
+    dfx = fx.deriv()   # 一阶导
+    ddfx = dfx.deriv() # 二阶导
+    r = (1 + dfx(v11)**2)**(3.0/2.0) / abs(ddfx(v11)) # 计算密切圆的曲率
+    return r
+
+def select_points()
 def binomial_fitting(boxes, masks, class_ids, class_names):
     """
     boxes: [num_instance, (y1, x1, y2, x2, class_id)] in image coordinates.
