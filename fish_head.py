@@ -141,7 +141,24 @@ def osculating_r(points, coef):
     r = (1 + dfx(v11)**2)**(3.0/2.0) / abs(ddfx(v11)) # 计算密切圆的曲率
     return r
 
-def select_points()
+def select_points(points, r):
+    """
+    points: [num_points, [x, y]] 原始的点集
+    r: [rad] 每个点对应的曲线密切圆
+    """
+    indices = [3]   # 最少3个点为一组子序列
+    while (len(r) - indices[-1]) > 3:    # 有足够点分配就循环
+        a = np.split(r, indices)  # 分组 r 曲率
+        if np.var(a[-2]) < 0.000001:   # 方差够小
+            indices[-1] += 1          # 增加子序列数量
+        elif np.var(a[-1]) < -0.001:  # 最后子序列方差够小则结束循环
+            print(a[-1])
+            print(np.var(a[-1]))
+            break
+        else:
+            indices = np.append(indices, indices[-1]+3)  # 添加一个子序列
+    indices = np.insert(indices, 0, 0)
+
 def binomial_fitting(boxes, masks, class_ids, class_names):
     """
     boxes: [num_instance, (y1, x1, y2, x2, class_id)] in image coordinates.
