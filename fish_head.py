@@ -41,6 +41,7 @@ from matplotlib.patches import Polygon
 import matplotlib.pyplot as plt
 import colorsys
 import random
+from io import BytesIO
 
 # Root directory of the project
 # ROOT_DIR = os.path.abspath(".\\")
@@ -102,8 +103,45 @@ def display_instances(image, points, title="",
     ax.plot(rpts[0], rpts[1], 'go-')
     ax.imshow(image.astype(np.uint8))
     plt.savefig('test.jpg')
-    return image
+    figdata = BytesIO()
+    plt.savefig(figdata, format='png')
+    return figdata.getvalue()
 
+def polynominal_fitting(points, ploy_threshold):
+    """
+    points: 离散点的集合[[x, y]...]
+    mse_threshold: 预期的MSE上限
+    poly_threshold: 拟合的最高项数
+    
+    return: 拟合结果及其MSE
+    """
+    # 均方差集合
+    MSEs = np.array([])
+    coefs = [] # 拟合的集合
+    for i in range(ploy_threshold): 
+        coef = np.polyfit(points[:,0], points[:, 1], i) # 拟合
+        coefs.append(coef)
+        fits = np.polyval(coef, points[:, 0]) # 拟合后的值
+        # print(len(v1), len(x_fit))
+        # 原值与拟合值的均方差
+        MSE = np.linalg.norm(fits - points[:, 0], ord=2)**2/len(v)
+        MSEs = np.append(MSEs, MSE)
+    diffMSE = np.diff(MSEs) # 拟合的均方差的差异
+    co_ind = np.argmin(abs(diffMSE))  # 拟合的MSE差异中选择一个最小的
+    return coefs[co_ind], MSEs[co_ind]
+
+def osculating_r(points, coef):
+    # 产生一个均匀的数据集，不要重复值，间隔均匀
+    v11 = np.arange(points[np.argmin(points, axis=0)[0]][0], points[np.argmax(points, axis=0)[0]][0])
+    v12 = np.polyval(coef, v11) # 计算拟合多项式的值
+    # 拟合函数
+    fx = np.poly1d(coef) # 选择一个合适的
+    dfx = fx.deriv()   # 一阶导
+    ddfx = dfx.deriv() # 二阶导
+    r = (1 + dfx(v11)**2)**(3.0/2.0) / abs(ddfx(v11)) # 计算密切圆的曲率
+    return r
+
+def select_points()
 def binomial_fitting(boxes, masks, class_ids, class_names):
     """
     boxes: [num_instance, (y1, x1, y2, x2, class_id)] in image coordinates.
