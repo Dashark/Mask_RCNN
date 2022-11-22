@@ -690,7 +690,7 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
 
         # Mask
         mask = masks[:, :, i]
-        if show_mask and (class_names[class_ids[i]] == 'fish_head'):
+        if show_mask: # and (class_names[class_ids[i]] == 'fish_head'):
             print(class_names[class_ids[i]])
             maskroll = np.roll(mask, 1, axis=1)
             m = np.logical_xor(mask, maskroll)
@@ -698,6 +698,7 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
 
         # Mask Polygon
         # Pad to ensure proper polygons for masks that touch image edges.
+        # TODO 这儿把鱼身鱼尾跳过去了
         if class_names[class_ids[i]] != 'fish_head':
             continue
         padded_mask = np.zeros(
@@ -712,6 +713,7 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             # print(verts[verts[:,1]==rb[1]])
             # rb = np.max(verts[], axis=0)
             # lt = np.min(verts, axis=0)
+            # TODO 因为只有鱼头，下面结果恰好是头身分割线。同样方法能否得到鱼腹分割线？
             ti = np.argmin(verts, axis=0)
             print(ti)
             # v = verts[verts[:,0]>(rb[0]-30)]
@@ -739,11 +741,10 @@ def display_instances(image, boxes, masks, class_ids, class_names, result_path,
             fx = np.poly1d(coefs[co_ind[0][0]]) # 选择一个合适的
             dfx = fx.deriv()   # 一阶导
             ddfx = dfx.deriv() # 二阶导
-            # TODO v1中元素值不是均匀的，存在r值的跨度
-            print(v1, len(v1))
             # print(np.argmax(v1, axis=0)[0])
             # print(np.argmin(v1, axis=0)[0])
             # print(v1[np.argmin(v1, axis=0)[0]][0])
+            # 做一个均匀数据集（一个像素一个点）
             v11 = np.arange(v1[np.argmin(v1, axis=0)[0]][0], v1[np.argmax(v1, axis=0)[0]][0])
             print(v11, len(v11))
             v12 = np.polyval(coefs[co_ind[0][0]], v11)
