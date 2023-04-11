@@ -1,0 +1,8 @@
+keras==2.2.5
+Twisted==21.7.0
+matplotlib==3.0.3
+opencv-python==4.5.5.64
+scikit-image==0.16.2
+imgaug==0.2.9
+Cython==0.29.21
+requests==2.25.1
