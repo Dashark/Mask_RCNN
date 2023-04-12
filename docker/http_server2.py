@@ -50,11 +50,11 @@ def tray_coordinate(data):
                               'z': barcode_space['depth'] + bias['z']}
                 tray_point_region.append(tray_point)
                 img_points.append([data_point['x'], data_point['y']])
-            print(img_points)
             result = pixel_to_world(camera_intrinsic, r, t, img_points)
-            print(result)
-            print(tray_point_region)
-            tray_obj['pointRegion'] = result #tray_point_region
+            for res in result:
+                tray_point = {'x': res[0][0], 'y': res[0][1], 'z': res[0][2]}
+                tray_point_region.append(tray_point)
+            tray_obj['pointRegion'] = tray_point_region
 
         tray_objs.append(tray_obj)
 
