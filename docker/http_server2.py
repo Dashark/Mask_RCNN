@@ -1,7 +1,7 @@
 import json
 import time
 import numpy as np
-from 2Dto3D import pixel_to_world, camera_parameter
+from ctow import pixel_to_world, camera_parameter
 from twisted.web import server, resource
 from twisted.internet import reactor, endpoints
 
@@ -14,7 +14,18 @@ def tray_coordinate(data):
     ratio_w = barcode_space['width'] / barcode_pixel['width']
     ratio_h = barcode_space['height'] / barcode_pixel['height']
 
-    img_points = np.array(dtype=np.double)
+    img_points = []
+    f = camera_parameter["f"]
+    c = camera_parameter["c"]
+    camera_intrinsic = np.mat(np.zeros((3, 3), dtype=np.float64))
+    camera_intrinsic[0, 0] = f[0]
+    camera_intrinsic[1, 1] = f[1]
+    camera_intrinsic[0, 2] = c[0]
+    camera_intrinsic[1, 2] = c[1]
+    camera_intrinsic[2, 2] = np.float64(1)
+    r = camera_parameter["R"]
+    t = np.asmatrix(camera_parameter["T"]).T
+
     tray_objs = []
     for data_obj in data['dataList']:
         tray_obj = {'analysisType': data_obj['analysisType'], 'dataRegionType': data_obj['dataRegionType']}
@@ -39,24 +50,16 @@ def tray_coordinate(data):
                               'z': barcode_space['depth'] + bias['z']}
                 tray_point_region.append(tray_point)
                 img_points.append([data_point['x'], data_point['y']])
-            tray_obj['pointRegion'] = tray_point_region
+            print(img_points)
+            result = pixel_to_world(camera_intrinsic, r, t, img_points)
+            print(result)
+            print(tray_point_region)
+            tray_obj['pointRegion'] = result #tray_point_region
 
         tray_objs.append(tray_obj)
 
-    f = camera_parameter["f"]
-    c = camera_parameter["c"]
-    camera_intrinsic = np.mat(np.zeros((3, 3), dtype=np.float64))
-    camera_intrinsic[0, 0] = f[0]
-    camera_intrinsic[1, 1] = f[1]
-    camera_intrinsic[0, 2] = c[0]
-    camera_intrinsic[1, 2] = c[1]
-    camera_intrinsic[2, 2] = np.float64(1)
-    r = camera_parameter["R"]
-    t = np.asmatrix(camera_parameter["T"]).T
-    print(img_points)
-    result = pixel_to_world(camera_intrinsic, r, t, img_points)
     return {"code": 200, "message": "操作成功",
-            "data": {"dataSize": data['dataSize'], "dataList": result}}
+            "data": {"dataSize": data['dataSize'], "dataList": tray_objs}}
 
 
 # 载具坐标转工位坐标
